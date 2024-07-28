@@ -1,0 +1,625 @@
+Tools:  [
+          StructuredTool(
+            name='search',
+            description='Call to surf the web.',
+            args_schema=<class 'pydantic.v1.main.searchSchema'>,
+            func=<function search at 0x79eb3a0484c0>
+          )
+        ]
+
+tool_node:  tools(
+              recurse=True, 
+              tools_by_name={
+                'search': StructuredTool(
+                  name='search',
+                  description='Call to surf the web.',
+                  args_schema=<class 'pydantic.v1.main.searchSchema'>,
+                  func=<function search at 0x79eb3a0484c0>
+                )
+              },
+              handle_tool_errors=True
+            )
+
+Model with bind_tools:  bound=ChatGroq(
+                          client=<groq.resources.chat.completions.Completions object at 0x79eb3a066680>,
+                          async_client=<groq.resources.chat.completions.AsyncCompletions object at 0x79eb3a0659c0>,
+                          model_name='llama3-70b-8192',
+                          temperature=0.1,
+                          groq_api_key=SecretStr('**********'),
+                          max_tokens=1024
+                        ) 
+                        kwargs={
+                          'tools': [
+                            {
+                              'type': 'function',
+                              'function': {
+                                'name': 'search',
+                                'description': 'Call to surf the web.',
+                                'parameters': {
+                                  'type': 'object',
+                                  'properties': {
+                                    'query': {
+                                      'type': 'string'
+                                    }
+                                  }, 
+                                'required': [
+                                  'query'
+                                ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+
+workflow:  <langgraph.graph.state.StateGraph object at 0x79eb3aec1150>
+
+Workflow add node 'agent':  <langgraph.graph.state.StateGraph object at 0x79eb3aec1150>
+
+Workflow add node 'tools':  <langgraph.graph.state.StateGraph object at 0x79eb3aec1150>
+
+Workflow set entry point 'agent':  <langgraph.graph.state.StateGraph object at 0x79eb3aec1150>
+
+Workflow add conditional edge 'agent' -> should_continue func:  <langgraph.graph.state.StateGraph object at 0x79eb3aec1150>
+
+Workflow add edge 'tools' -> 'agent':  <langgraph.graph.state.StateGraph object at 0x79eb3aec1150>
+
+MEmory checkpointer:  <langgraph.checkpoint.memory.MemorySaver object at 0x79eb3a0523b0>
+
+App compiled with checkpointer:  nodes={
+                                   '__start__': PregelNode(
+                                                  config={
+                                                    'tags': ['langsmith:hidden'], 
+                                                    'metadata': {},
+                                                    'configurable': {}
+                                                  },
+                                                  channels=['__start__'],
+                                                  triggers=['__start__'],
+                                                  writers=[
+                                                    ChannelWrite<messages>(
+                                                      recurse=True,
+                                                      writes=[
+                                                        ChannelWriteEntry(
+                                                          channel='messages',
+                                                          value=<object object at 0x79eb3cedf370>,
+                                                          skip_none=False,
+                                                          mapper=_get_state_key(recurse=False)
+                                                        )
+                                                      ],
+                                                      require_at_least_one_of=['messages']
+                                                    ),
+                                                    ChannelWrite<start:agent>(
+                                                      recurse=True,
+                                                      writes=[
+                                                        ChannelWriteEntry(
+                                                          channel='start:agent',
+                                                          value='__start__',
+                                                          skip_none=False,
+                                                          mapper=None
+                                                        )
+                                                      ],
+                                                      require_at_least_one_of=None
+                                                    )
+                                                  ]
+                                                ),
+                                                'agent': PregelNode(
+                                                  config={
+                                                    'tags': [],
+                                                    'metadata': {},
+                                                    'configurable': {}
+                                                  },
+                                                  channels={
+                                                    'messages': 'messages'
+                                                  },
+                                                  triggers=['start:agent', 'tools'],
+                                                  mapper=functools.partial(
+                                                    <function _coerce_state at 0x79eb3a5b6830>,
+                                                    <class 'langgraph.graph.message.MessagesState'>
+                                                  ),
+                                                  writers=[
+                                                    ChannelWrite<agent,messages>(
+                                                      recurse=True,
+                                                      writes=[
+                                                        ChannelWriteEntry(
+                                                          channel='agent',
+                                                          value='agent',
+                                                          skip_none=False,
+                                                          mapper=None
+                                                        ),
+                                                        ChannelWriteEntry(
+                                                          channel='messages',
+                                                          value=<object object at 0x79eb3cedf370>,
+                                                          skip_none=False,
+                                                          mapper=_get_state_key(recurse=False)
+                                                        )
+                                                      ],
+                                                      require_at_least_one_of=['messages']
+                                                    ),
+                                                    _route(
+                                                      recurse=True,
+                                                      _is_channel_writer=True
+                                                    )
+                                                  ]
+                                                ),
+                                                'tools': PregelNode(
+                                                  config={
+                                                    'tags': [],
+                                                    'metadata': {},
+                                                    'configurable': {}
+                                                  },
+                                                  channels={'messages': 'messages'},
+                                                  triggers=['branch:agent:should_continue:tools'],
+                                                  mapper=functools.partial(
+                                                    <function _coerce_state at 0x79eb3a5b6830>,
+                                                    <class 'langgraph.graph.message.MessagesState'>
+                                                  ),
+                                                  writers=[
+                                                    ChannelWrite<tools,messages>(
+                                                      recurse=True,
+                                                      writes=[
+                                                        ChannelWriteEntry(
+                                                          channel='tools',
+                                                          value='tools',
+                                                          skip_none=False,
+                                                          mapper=None
+                                                        ),
+                                                        ChannelWriteEntry(
+                                                          channel='messages',
+                                                          value=<object object at 0x79eb3cedf370>,
+                                                          skip_none=False,
+                                                          mapper=_get_state_key(recurse=False)
+                                                        )
+                                                      ],
+                                                      require_at_least_one_of=['messages']
+                                                    )
+                                                  ]
+                                                )
+                                              }
+                                              channels={
+                                                'messages': <langgraph.channels.binop.BinaryOperatorAggregate object at 0x79eb3a052410>,
+                                                '__start__': <langgraph.channels.ephemeral_value.EphemeralValue object at 0x79eb3a051510>,
+                                                'agent': <langgraph.channels.ephemeral_value.EphemeralValue object at 0x79eb3a0512a0>,
+                                                'tools': <langgraph.channels.ephemeral_value.EphemeralValue object at 0x79eb3a051120>,
+                                                'start:agent': <langgraph.channels.ephemeral_value.EphemeralValue object at 0x79eb3a0513c0>,
+                                                'branch:agent:should_continue:tools': <langgraph.channels.ephemeral_value.EphemeralValue object at 0x79eb3a0511e0>
+                                              } 
+                                              auto_validate=False stream_mode='updates' output_channels=['messages'] stream_channels=['messages'] input_channels='__start__' checkpointer=<langgraph.checkpoint.memory.MemorySaver object at 0x79eb3a0523b0> builder=<langgraph.graph.state.StateGraph object at 0x79eb3aec1150>
+
+messages from call_model func:  [
+                                  HumanMessage(
+                                    content='what is the weather in sf', 
+                                    id='f560fa10-cde4-47df-83d6-7171b8693a0b'
+                                  )
+                                ]
+
+response from should_continue func:  content='' 
+                                     additional_kwargs={
+                                       'tool_calls': [
+                                         {
+                                           'id': 'call_p5pe',
+                                           'function': {
+                                             'arguments': '{
+                                               "query":"current weather in san francisco"
+                                             }', 
+                                             'name': 'search'
+                                           },
+                                           'type': 'function'
+                                         }
+                                       ]
+                                     }
+                                     response_metadata={
+                                       'token_usage': {
+                                         'completion_tokens': 47,
+                                         'prompt_tokens': 903,
+                                         'total_tokens': 950,
+                                         'completion_time': 0.147177053,
+                                         'prompt_time': 0.096173601,
+                                         'queue_time': None,
+                                         'total_time': 0.243350654
+                                       },
+                                       'model_name': 'llama3-70b-8192',
+                                       'system_fingerprint': 'fp_2f30b0b571',
+                                       'finish_reason': 'tool_calls',
+                                       'logprobs': None
+                                     }
+                                     id='run-87672f15-e09f-461c-a7b2-f765ba44a06c-0'
+                                     tool_calls=[
+                                       {
+                                         'name': 'search',
+                                         'args': {
+                                           'query': 'current weather in san francisco'
+                                         },
+                                         'id': 'call_p5pe',
+                                         'type': 'tool_call'
+                                       }
+                                     ]
+                                     usage_metadata={
+                                       'input_tokens': 903,
+                                       'output_tokens': 47,
+                                       'total_tokens': 950
+                                     }
+
+
+messages from should_continue func:  [
+                                       HumanMessage(
+                                         content='what is the weather in sf',
+                                         id='f560fa10-cde4-47df-83d6-7171b8693a0b'
+                                       ),
+                                       AIMessage(
+                                         content='',
+                                         additional_kwargs={
+                                           'tool_calls': [
+                                             {
+                                               'id': 'call_p5pe',
+                                               'function': {
+                                                 'arguments': '{
+                                                   "query":"current weather in san francisco"
+                                                 }',
+                                                 'name': 'search'
+                                               },
+                                               'type': 'function'
+                                             }
+                                           ]
+                                         },
+                                         response_metadata={
+                                           'token_usage': {
+                                             'completion_tokens': 47,
+                                             'prompt_tokens': 903,
+                                             'total_tokens': 950,
+                                             'completion_time': 0.147177053,
+                                             'prompt_time': 0.096173601,
+                                             'queue_time': None,
+                                             'total_time': 0.243350654
+                                           },
+                                           'model_name': 'llama3-70b-8192',
+                                           'system_fingerprint': 'fp_2f30b0b571',
+                                           'finish_reason': 'tool_calls',
+                                           'logprobs': None
+                                         },
+                                         id='run-87672f15-e09f-461c-a7b2-f765ba44a06c-0',
+                                         tool_calls=[
+                                           {
+                                             'name': 'search',
+                                             'args': {
+                                               'query': 'current weather in san francisco'
+                                             },
+                                             'id': 'call_p5pe',
+                                             'type': 'tool_call'
+                                           }
+                                         ],
+                                         usage_metadata={
+                                           'input_tokens': 903,
+                                           'output_tokens': 47,
+                                           'total_tokens': 950
+                                         }
+                                       )
+                                     ]
+
+
+last message from should_continue func:  content='' additional_kwargs={
+                                                                        'tool_calls': [
+                                                                          {
+                                                                            'id': 'call_p5pe',
+                                                                            'function': {
+                                                                              'arguments': '{
+                                                                                "query":"current weather in san francisco"
+                                                                              }',
+                                                                              'name': 'search'
+                                                                            },
+                                                                            'type': 'function'
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                    response_metadata={
+                                                      'token_usage': {
+                                                        'completion_tokens': 47,
+                                                        'prompt_tokens': 903,
+                                                        'total_tokens': 950,
+                                                        'completion_time': 0.147177053,
+                                                        'prompt_time': 0.096173601,
+                                                        'queue_time': None,
+                                                        'total_time': 0.243350654
+                                                      },
+                                                      'model_name': 'llama3-70b-8192',
+                                                      'system_fingerprint': 'fp_2f30b0b571',
+                                                      'finish_reason': 'tool_calls',
+                                                      'logprobs': None
+                                                    }
+                                                    id='run-87672f15-e09f-461c-a7b2-f765ba44a06c-0' 
+                                                    tool_calls=[
+                                                      {
+                                                        'name': 'search',
+                                                        'args': {
+                                                        'query': 'current weather in san francisco'
+                                                        },
+                                                        'id': 'call_p5pe',
+                                                        'type': 'tool_call'
+                                                      }
+                                                    ] 
+                                                    usage_metadata={
+                                                      'input_tokens': 903,
+                                                      'output_tokens': 47,
+                                                      'total_tokens': 950
+                                                    }
+Tool called!
+
+messages from call_model func:  [
+                                  HumanMessage(
+                                    content='what is the weather in sf',
+                                    id='f560fa10-cde4-47df-83d6-7171b8693a0b'
+                                  ),
+                                  AIMessage(
+                                    content='',
+                                    additional_kwargs={
+                                      'tool_calls': [
+                                        {
+                                          'id': 'call_p5pe',
+                                          'function': {
+                                            'arguments': '{
+                                              "query":"current weather in san francisco"
+                                            }',
+                                            'name': 'search'
+                                          },
+                                          'type': 'function'
+                                        }
+                                      ]
+                                    },
+                                    response_metadata={
+                                      'token_usage': {
+                                        'completion_tokens': 47,
+                                        'prompt_tokens': 903,
+                                        'total_tokens': 950,
+                                        'completion_time': 0.147177053,
+                                        'prompt_time': 0.096173601,
+                                        'queue_time': None,
+                                        'total_time': 0.243350654
+                                      },
+                                      'model_name': 'llama3-70b-8192',
+                                      'system_fingerprint': 'fp_2f30b0b571',
+                                      'finish_reason': 'tool_calls',
+                                      'logprobs': None
+                                    },
+                                    id='run-87672f15-e09f-461c-a7b2-f765ba44a06c-0',
+                                    tool_calls=[
+                                      {
+                                        'name': 'search',
+                                        'args': {
+                                          'query': 'current weather in san francisco'
+                                        },
+                                        'id': 'call_p5pe',
+                                        'type': 'tool_call'
+                                      }
+                                    ],
+                                    usage_metadata={
+                                      'input_tokens': 903,
+                                      'output_tokens': 47,
+                                      'total_tokens': 950
+                                    }
+                                  ),
+                                  ToolMessage(
+                                    content="It's 60 degrees and foggy.",
+                                    name='search', id='a4998c1d-bee7-43a1-bbd9-e3a0b40a3e29',
+                                    tool_call_id='call_p5pe'
+                                  )
+                                ]
+
+
+response from should_continue func:  content='The weather in San Francisco is 60 degrees and foggy.' 
+                                     response_metadata={
+                                       'token_usage': {
+                                         'completion_tokens': 14,
+                                         'prompt_tokens': 978,
+                                         'total_tokens': 992,
+                                         'completion_time': 0.040874828,
+                                         'prompt_time': 0.074790234,
+                                         'queue_time': None,
+                                         'total_time': 0.115665062
+                                       },
+                                       'model_name': 'llama3-70b-8192',
+                                       'system_fingerprint': 'fp_87cbfbbc4d',
+                                       'finish_reason': 'stop',
+                                       'logprobs': None
+                                     }
+                                     id='run-33f9ffdb-8691-4a49-9878-0a2cf7ae0ca9-0'
+                                     usage_metadata={
+                                       'input_tokens': 978,
+                                       'output_tokens': 14,
+                                       'total_tokens': 992
+                                     }
+
+
+messages from should_continue func:  [
+                                      HumanMessage(
+                                        content='what is the weather in sf',
+                                        id='f560fa10-cde4-47df-83d6-7171b8693a0b'
+                                        ),
+                                        AIMessage(
+                                          content='',
+                                          additional_kwargs={
+                                            'tool_calls': [
+                                              {
+                                                'id': 'call_p5pe',
+                                                'function': {
+                                                  'arguments': '{
+                                                    "query":"current weather in san francisco"
+                                                  }',
+                                                  'name': 'search'
+                                                },
+                                                'type': 'function'
+                                              }
+                                            ]
+                                          },
+                                          response_metadata={
+                                            'token_usage': {
+                                              'completion_tokens': 47,
+                                              'prompt_tokens': 903,
+                                              'total_tokens': 950,
+                                              'completion_time': 0.147177053,
+                                              'prompt_time': 0.096173601,
+                                              'queue_time': None,
+                                              'total_time': 0.243350654
+                                            },
+                                            'model_name': 'llama3-70b-8192',
+                                            'system_fingerprint': 'fp_2f30b0b571',
+                                            'finish_reason': 'tool_calls',
+                                            'logprobs': None
+                                          },
+                                          id='run-87672f15-e09f-461c-a7b2-f765ba44a06c-0',
+                                          tool_calls=[
+                                            {
+                                              'name': 'search',
+                                              'args': {
+                                              'query': 'current weather in san francisco'
+                                              },
+                                              'id': 'call_p5pe',
+                                              'type': 'tool_call'
+                                            }
+                                          ],
+                                          usage_metadata={
+                                            'input_tokens': 903,
+                                            'output_tokens': 47,
+                                            'total_tokens': 950}),
+                                            ToolMessage(
+                                              content="It's 60 degrees and foggy.",
+                                              name='search',
+                                              id='a4998c1d-bee7-43a1-bbd9-e3a0b40a3e29',
+                                              tool_call_id='call_p5pe'
+                                            ),
+                                            AIMessage(
+                                              content='The weather in San Francisco is 60 degrees and foggy.',
+                                              response_metadata={
+                                                'token_usage': {
+                                                  'completion_tokens': 14,
+                                                  'prompt_tokens': 978,
+                                                  'total_tokens': 992,
+                                                  'completion_time': 0.040874828,
+                                                  'prompt_time': 0.074790234,
+                                                  'queue_time': None,
+                                                  'total_time': 0.115665062
+                                                },
+                                                'model_name': 'llama3-70b-8192',
+                                                'system_fingerprint': 'fp_87cbfbbc4d',
+                                                'finish_reason': 'stop',
+                                                'logprobs': None
+                                              },
+                                              id='run-33f9ffdb-8691-4a49-9878-0a2cf7ae0ca9-0',
+                                              usage_metadata={
+                                                'input_tokens': 978,
+                                                'output_tokens': 14,
+                                                'total_tokens': 992
+                                              }
+                                            )
+                                          ]
+
+
+last message from should_continue func:  content='The weather in San Francisco is 60 degrees and foggy.'
+                                         response_metadata={
+                                           'token_usage': {
+                                             'completion_tokens': 14,
+                                             'prompt_tokens': 978,
+                                             'total_tokens': 992,
+                                             'completion_time': 0.040874828,
+                                             'prompt_time': 0.074790234,
+                                             'queue_time': None,
+                                             'total_time': 0.115665062
+                                           },
+                                           'model_name': 'llama3-70b-8192',
+                                           'system_fingerprint': 'fp_87cbfbbc4d',
+                                           'finish_reason': 'stop',
+                                           'logprobs': None
+                                         }
+                                         id='run-33f9ffdb-8691-4a49-9878-0a2cf7ae0ca9-0' 
+                                         usage_metadata={
+                                           'input_tokens': 978,
+                                           'output_tokens': 14,
+                                           'total_tokens': 992
+                                         }
+
+Tool not called returning answer to user.
+
+Final State = answer:  {
+                         'messages': [
+                           HumanMessage(
+                             content='what is the weather in sf',
+                             id='f560fa10-cde4-47df-83d6-7171b8693a0b'
+                           ),
+                           AIMessage(
+                             content='',
+                             additional_kwargs={
+                               'tool_calls': [
+                                 {
+                                   'id': 'call_p5pe',
+                                   'function': {
+                                     'arguments': '{
+                                       "query":"current weather in san francisco"
+                                     }',
+                                     'name': 'search'
+                                   },
+                                   'type': 'function'
+                                 }
+                               ]
+                             },
+                             response_metadata={
+                               'token_usage': {
+                                 'completion_tokens': 47,
+                                 'prompt_tokens': 903,
+                                 'total_tokens': 950,
+                                 'completion_time': 0.147177053,
+                                 'prompt_time': 0.096173601,
+                                 'queue_time': None,
+                                 'total_time': 0.243350654
+                               },
+                               'model_name': 'llama3-70b-8192',
+                               'system_fingerprint': 'fp_2f30b0b571',
+                               'finish_reason': 'tool_calls',
+                               'logprobs': None
+                             },
+                             id='run-87672f15-e09f-461c-a7b2-f765ba44a06c-0',
+                             tool_calls=[
+                               {
+                                 'name': 'search',
+                                 'args': {
+                                   'query': 'current weather in san francisco'
+                                 },
+                                 'id': 'call_p5pe',
+                                 'type': 'tool_call'
+                               }
+                             ],
+                             usage_metadata={
+                               'input_tokens': 903,
+                               'output_tokens': 47,
+                               'total_tokens': 950
+                             }
+                           ),
+                           ToolMessage(
+                             content="It's 60 degrees and foggy.",
+                             name='search', id='a4998c1d-bee7-43a1-bbd9-e3a0b40a3e29',
+                             tool_call_id='call_p5pe'
+                           ),
+                           AIMessage(
+                             content='The weather in San Francisco is 60 degrees and foggy.',
+                             response_metadata={
+                               'token_usage': {
+                                 'completion_tokens': 14,
+                                 'prompt_tokens': 978,
+                                 'total_tokens': 992,
+                                 'completion_time': 0.040874828,
+                                 'prompt_time': 0.074790234,
+                                 'queue_time': None,
+                                 'total_time': 0.115665062
+                               },
+                               'model_name': 'llama3-70b-8192',
+                               'system_fingerprint': 'fp_87cbfbbc4d',
+                               'finish_reason': 'stop',
+                               'logprobs': None
+                             },
+                             id='run-33f9ffdb-8691-4a49-9878-0a2cf7ae0ca9-0',
+                             usage_metadata={
+                               'input_tokens': 978,
+                               'output_tokens': 14,
+                               'total_tokens': 992
+                             }
+                           )
+                         ]
+                       }
+
+Final state last message content:  The weather in San Francisco is 60 degrees and foggy.
