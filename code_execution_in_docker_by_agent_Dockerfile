@@ -1,0 +1,10 @@
+FROM python:3.9-slim
+
+RUN pip install --no-cache-dir some-required-library
+
+# script that we want to run inside docker, this is app.py for the moment for test purposes but should become the file written by the agent
+COPY app.py /app/app.py
+
+WORKDIR /app
+
+CMD ["python3", "app.py"]

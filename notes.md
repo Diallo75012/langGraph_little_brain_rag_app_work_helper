@@ -706,10 +706,16 @@ except subprocess.TimeoutExpired:
 # nano Dockerfile
 # Dockerfile
 FROM python:3.9-slim
-RUN pip install --no-cache-dir some-required-library
-COPY script.py /app/script.py  # script that we want to run inside docker
+# Copy the requirements.txt file into the container
+COPY requirements.txt .
+# Install the required packages
+RUN pip install --no-cache-dir -r requirements.txt
+# script that we want to run inside docker
+COPY app.py /app/app.py
+# copy .dynamic.env file special for agent if needed (optional)
+# COPY .dynamic.env /app/.dynamic.env
 WORKDIR /app
-CMD ["python", "script.py"]
+CMD ["python3", "app.py"]
 # Build and run (this step will be replaced by a script capturing output)
 docker build -t sandbox-python .
 docker run --rm sandbox-python
@@ -719,14 +725,25 @@ docker run --rm sandbox-python
 # BUT, we will use the following script so that the Agent can capture the output of the script ran in docker using `subprocess`
 import subprocess
 
-def run_script_in_docker(script_content):
+def run_script_in_docker(dockerfile_name_to_run_script: str, agent_script_file_name: str) -> Tuple[str, str]:
+
     # Write the script content to a file
-    with open('script.py', 'w') as script_file:
-        script_file.write(script_content)
+    with open("agent_created_script_to_execute_in_docker.py", "w", encoding="utf-8") as going_to_docker_script_file, open(agent_script_file_name, "r", encoding="utf-8") as script_content:
+        going_to_docker_script_file.write(script_content.read())
+
+    # Create the dockerfile for the agent to run the script inside docker
+    with open(dockerfile_name_to_run_script, "w", encoding="utf-8") as docker_file:
+        docker_file.write("FROM python:3.9-slim\n")
+        docker_file.write("COPY requirements.txt .\n")
+        docker_file.write("RUN pip install --no-cache-dir -r requirements.txt\n")
+        docker_file.write("COPY agent_created_script_to_execute_in_docker.py /app/agent_created_script_to_execute_in_docker.py\n")
+        docker_file.write("COPY .dynamic.env /app/.dynamic.env\n")
+        docker_file.write("WORKDIR /app\n")
+        docker_file.write('CMD ["python", "agent_created_script_to_execute_in_docker.py"]')
 
     try:
         # Build the Docker image
-        build_command = ['docker', 'build', '-t', 'sandbox-python', '.']
+        build_command = ['docker', 'build', '-t', 'sandbox-python', '-f', f'{dockerfile_name_to_run_script}', '.']
         subprocess.run(build_command, check=True)
 
         # Run the Docker container and capture the output
@@ -734,6 +751,16 @@ def run_script_in_docker(script_content):
         result = subprocess.run(run_command, capture_output=True, text=True)
 
         stdout, stderr = result.stdout, result.stderr
+        with open("agent_docker_script_execution_result.md", "w", encoding="utf-8") as script_execution_result:
+          script_execution_result.write("# Python script executed in docker, this is the result of captured stdout and stderr")
+          script_execution_result.write("""
+            This is the result after the execution of the code
+            Returns:
+            stdout str: the standard output of the script execution which runs in docker, therefore, we capture the stdout to know if the script output is as expected. You need to analyze it and see why it is empty if emppty, why it is not as expected to suggest code fix, and if the script executes correctly, get this stdout value and answer using markdown ```python ``` saying just one word: OK'
+            stderr str: the standard error of the script execution. If this value is not empty answer witht the content of the value with a suggestion in how to fix it. Answer using mardown and put a JSON of the error message with key ERROR between this ```python ```. 
+          """)
+          script_execution_result.write(f"\n\nstdout: {stdout}\nstderr: {stderr}")
+
     except subprocess.CalledProcessError as e:
         stdout, stderr = '', str(e)
     finally:
@@ -756,9 +783,27 @@ print(stdout)
 print("Errors:")
 print(stderr)
 
-```
 
+# PGVector and Postgreql linking
+
+#### How to link PGVector collection to the corresponding data from Postrgesql database table.
+##### Solution is to use a UUID which will be also embedded:
+- The Posgreql database have a column with unique identifier UUID
+- The column containing the cleaned data that we want to embed will have a UUID
+- Embed the data with the UUID
+- Retrieve on user query
+- Then parse the UUID to fetch the database row and get the column that we want
+
+
+# Matching Query Semantic vs Exact
+When a user sends its query we need a way to check if we can just use the cache to answer or if we need to perform a vector search.
+For that if we decide to check on the cache before making any vector search, we need to find a similar query:
+- Exact match: we find the smae query and fetch the content stored
+- Semantic mecth: we use embedding of the query to search for queries int he cache with are similar (I prefer this one)
  
+But we will implement a function that does both, if it founds same query, it fetches from cache but will also check if there is semantic similiraty relevance. If not,the last chance will be to go to the vector db search.
+
+When all fails, even the vector db search, LLM can use other tools to search online.
  
  
  
