@@ -118,6 +118,9 @@ def handle_query(query: str) -> dict:
     # If no relevant result found, return a default response
     return {"message": "No relevant information found."}
 
+
+
+
 #### ALL THE FOLLOWING ARE EXAMPLES BUT LIBRARIES `query_matching` and `embedding_and_retrieval` will need to be imported to the main `app.py` and not here
 # Example usage how to query the Redis cache
 """
@@ -175,16 +178,22 @@ schedule.run_pending()
 
 ### Store document quality chunks in the postgresql DB
 """
+### LOGIC FOR THE MOMENT
 Here we need to use the `pdf_parser` library or the `webpage_parser` library. those are going to to load the doc/page and use pandas to get best content store in the db after data cleaning and embedd those documents under the same collection name
 from pdf_parser import *
 from webpage_parser import *
 # workflow:
- - document is loaded
- - docuemtn is saved to db after being cleaned (just quality data from it)
- - now embedding needs to be done on the database data using the `embedding_and_retireval` library functions
+ - document is loaded, docuement is saved to db after being cleaned (just quality data from it)
+   `from pdf_parser import *
+    from webpage_parser import *`
+ - Embedding done on the database data inside the chunking_module library (import of `embedding_and_retireval` library functionsalready done inside the module)
+  `form chunking_module import *`
  - after that we are ready to use here the  library `query_matching` to get user/llm query and perform cahce search first and then vector search if not found in cache
+  `from query_matching import *`
  - need to implement a tool internet search in the agent logic to perform internet search only if this fails
+  `Use agent prompting and conditional edge of langgraph to direct the llm to use internet search if didn't found information or if needed extra information because of info poorness`
  - better use lots of mini tools than one huge and let the llm check. We will just prompting the agent to tell it what is the workflow. So revise functions here to be decomposed in mini tools
+   `list of tools to create to be planned and helps for nodes creation as well so it is a mix of tools and nodes definition titles for the moment: [internet_search_tool, redis_cache_search_tool, embedding_vectordb_search_tool, user_query_analyzer_rephrasing_tool, node_use_tool_or_not_if_not_answer_query, save_initial_query_an_end_outcome_to_key_value_db_and_create_redis_cache_with_long_term_ttl, node_judge_answer_for_new_iteration_or_not]`
  - then build all those mini tools
 
 """

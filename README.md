@@ -1,5 +1,20 @@
 # LangGraph
 
+### Idea behind this project and objectives
+I believe that all is about the data embedded and how relevant it can be and believe that difficult structured docs like pdf can't be fully embedded btu can be  quality-embedded extracting and storing only the information that can be extracted in a qualitative way and then use internet search if retriever didn't find the information or found the information not complete.
+
+Therefore, here i want highly customizable agents framework like LangGraph and need those edges and conditions and nodes to be able to create an advanced LLM task support.
+
+I also believe in mini-agents making super-specific tasks. here the job of the engineer is to have an highers logic overview of what components are needed to be added to the system or improved, that is why langfuse will be used as well for tracing. 
+
+We are trying to use small models and succeed at the task with those one.
+Some parts of the code logic will be just like a normal app which doesn't use LLMs but code logic to solve problems or to perform tasks, therefore, sometimes agents will just be the one deciding if that part of the code needs to be activated/used or not.
+
+We are using a Redis cache which will use TTL to expired cache and will store the queries and the response retrieves in double entries one having the key query store as ahsh for exact match search and the double entry with the key query stored as vector for semantic search. This hybrid search permit to increase the chance to find the cached entry. If not, then, the expensive vector database search is done. The fallback is an internet search if the data is not found. 
+
+There is not extraction refining process implemented but would be amazing...
+
+# To do's
 - [x] Get boilerplate done and study the different objects by printing them all
 - [x] Make a drawing to start in order to get our project plan
 - [x] Read more the documentation in order to understand different objects
@@ -25,4 +40,5 @@ But if TTL is set in Redis no need to clear the cache as Redis is gonna get rid 
 
 ### Tips:
 - For the learning curve, take the habit to print the states after every `nodes` in order to understand what has been updated in the state
+
 
