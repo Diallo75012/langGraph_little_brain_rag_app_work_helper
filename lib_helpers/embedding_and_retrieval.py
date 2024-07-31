@@ -1,5 +1,9 @@
+"""
+# embedding_and_retrieval.py
+
 # complete workflow to embed documents into a PostgreSQL database using PGVector, perform similarity searches, and integrate the results with additional context from the original PostgreSQL table.
-# what is particular with this iteration is that we store the content of the row with the unique id as json object and use it to fetch the UUID from the retireved data to get the original row fromt he database in the SQL side (vs the PGvector side) and then combine both to have a full answer for the llm or the user
+# what is particular with this iteration is that we store the content of the row with the unique id as json object and use it to fetch the UUID from the retireved data to get the original row from the database in the SQL side (vs the PGvector side) and then combine both to have a full answer for the llm or the user
+"""
 import os
 import json
 import psycopg2
@@ -51,33 +55,16 @@ def create_table_if_not_exists():
 create_table_if_not_exists()
 
 # REDIS CACHE FUNC
-"""
-USAGE:
-# Assuming we have the document ID and content
-document_id = uuid.uuid4()
-document_content = "Example content of the document chunk."
-cache_document(document_id, document_content)
-update_retrieved_status(document_id)
 
-# clear chache periodically
-import schedule
-import time
-
-# Schedule the cache clearing function
-schedule.every().day.at("00:00").do(clear_cache)
-
-while True:
-    schedule.run_pending()
-    time.sleep(1)
-
-"""
 # Connect to Redis
 redis_client = redis.StrictRedis(host=os.getenv("REDIS_HOST"), port=os.getenv("REDIS_PORT"), db=0)
 
+# cache doc in Redis function
 def cache_document(doc_id: uuid.UUID, content: str, ttl: int = 3600):
     """Cache the document content in Redis with a TTL (time-to-live)."""
     redis_client.setex(str(doc_id), timedelta(seconds=ttl), content)
 
+# clear Redis cache function which sets the `retrieved` column to FALSE
 def clear_cache():
     """Clear the Redis cache and reset the retrieved column in PostgreSQL."""
     conn = connect_db()
@@ -90,6 +77,7 @@ def clear_cache():
     cursor.close()
     conn.close()
 
+# sets the `retireved` column to TRUE. Can be used when retrieval is performed and maybe then also cache that using the function in `query_matching` library
 def update_retrieved_status(doc_id: uuid.UUID):
     """Update the retrieved status of the document in PostgreSQL."""
     conn = connect_db()
@@ -112,17 +100,19 @@ CONNECTION_STRING = PGVector.connection_string_from_db_params(
 
 COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 
-
+# gets all documents from DB
 def fetch_documents() -> List[Dict[str, Any]]:
     """Fetch documents from the PostgreSQL database."""
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, content FROM documents")
+    # here can customize using the extra columns that we have in the db and this will help create the object to embed
+    cursor.execute("SELECT id, doc_name, title, content FROM documents")
     rows = cursor.fetchall()
     conn.close()
     return [{'id': row[0], 'content': row[1]} for row in rows]
 
 #### EMBED DOC IN PGVECTOR
+# Embeds the documents
 def vector_db_create(doc: List[Document], collection: str, connection: str) -> PGVector:
     """Create and store embeddings in PGVector."""
     db_create = PGVector.from_documents(
@@ -134,19 +124,25 @@ def vector_db_create(doc: List[Document], collection: str, connection: str) -> P
     )
     return db_create
 
+# function that loops through docs to embed those one by one using the embeding function 'vector_db_create'
 def create_embedding_collection(all_docs: List[Document], collection_name: str, connection_string: str) -> None:
     """Create an embedding collection in PGVector."""
     for doc in all_docs:
         vector_db_create([doc], collection_name, connection_string)
 
-documents = fetch_documents()
+def embed_all_db_documents(all_docs: List[Document], collection_name: str, connection_string: str) -> None:
+  # fetch all documents form the postgresql database using the `fetch_documents` function
+  documents = fetch_documents()
 
-# Convert documents to langchain Document format
-docs = [Document(page_content=json.dumps({'UUID': str(doc['id']), 'content': doc['content']})) for doc in documents]
+  # Convert documents to langchain Document format (List)
+  docs = [Document(page_content=json.dumps({'UUID': str(doc['id']), 'content': doc['content']})) for doc in documents]
 
-create_embedding_collection(docs, COLLECTION_NAME, CONNECTION_STRING)
+  # embed all those documents in the vectore db
+  create_embedding_collection(docs, collection_name, connection_string)
 
 #### RETRIEVE WITH RELEVANCY SCORE AND FETCH CORRESPONDING POSTGRESQL ROWS
+
+# embedding retrieval func
 def vector_db_retrieve(collection: str, connection: str, embedding: OllamaEmbeddings) -> PGVector:
     """Retrieve the vector database instance."""
     return PGVector(
@@ -154,7 +150,7 @@ def vector_db_retrieve(collection: str, connection: str, embedding: OllamaEmbedd
         connection_string=connection,
         embedding_function=embedding,
     )
-
+# retrieve `n` releavnt embedding to user query with score
 def retrieve_relevant_vectors(query: str, top_n: int = 2) -> List[Dict[str, Any]]:
     """Retrieve the most relevant vectors from PGVector."""
     db = vector_db_retrieve(COLLECTION_NAME, CONNECTION_STRING, embeddings)
@@ -165,6 +161,7 @@ def retrieve_relevant_vectors(query: str, top_n: int = 2) -> List[Dict[str, Any]
         results.append({'UUID': data['UUID'], 'content': data['content'], 'score': score})
     return results
 
+# use the UUID of the retirved doc to fetch the postgresql database row and get extra infos from it later on, it is also to verify the qulity of embedding and catch errors if the content is different for example (at the beginning of dev work then when we are sure of the code we get rid of the checks, but we will definetly check thatthe content is the same from embedding to database row content.).
 def fetch_document_by_uuid(doc_id: uuid.UUID) -> Dict[str, Any]:
     """Fetch the document content by UUID from the PostgreSQL database."""
     conn = connect_db()
@@ -173,16 +170,18 @@ def fetch_document_by_uuid(doc_id: uuid.UUID) -> Dict[str, Any]:
     row = cursor.fetchone()
     conn.close()
     if row:
-        return {'id': row[0], 'title': row[1], 'content': row[2]}
+        return {'id': row[0], 'doc_name': row[1], 'title': row[2], 'content': row[3]}
     else:
         return {}
 
-def answer_retriever(query: str) -> Dict[str, Any]:
+#### BUSINESS LOGIC OF RETIREVAL: goes to db qith query and get relevance score and then goes to the postgresql db to getthe rest of the row content to form a nice context for quality answer.
+def answer_retriever(query: str, relevance_score: int) -> List[Dict[str, Any]]:
     """Retrieve answers using PGVector and ChatOllama."""
     relevant_vectors = retrieve_relevant_vectors(query)
     results = []
-    for vector in relevant_vectors:
+    for vector in relevant_vectors[0]["score"] > relevance_score:
         doc_id = uuid.UUID(vector['UUID'])
+        # here document will be a dict with keys: id, doc_name, title, content
         document = fetch_document_by_uuid(doc_id)
         results.append({
             'UUID': vector['UUID'],
@@ -192,7 +191,18 @@ def answer_retriever(query: str) -> Dict[str, Any]:
         })
     return results
 
+# example of how to use it and query
 query = "Your query here"
-response = answer_retriever(query)
+response = answer_retriever(query, 0.7)
 print(json.dumps(response, indent=4))
+
+
+
+
+
+
+
+
+
+
 

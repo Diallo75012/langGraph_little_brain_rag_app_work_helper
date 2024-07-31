@@ -1,7 +1,7 @@
 FROM python:3.9-slim
-COPY requirements.txt .
+COPY ../requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY agent_created_script_to_execute_in_docker.py /app/agent_created_script_to_execute_in_docker.py
-COPY .env /app/.env
+COPY ../.env /app/.env
 WORKDIR /app
 CMD ["python", "agent_created_script_to_execute_in_docker.py"]
