@@ -33,7 +33,7 @@ def get_query_hash(query: str) -> str:
     return hashlib.sha256(query.encode()).hexdigest()
 
 # Record in Redis Both Kind of Keys (hashed for exact match and vector for semantic match)
-def cache_response(query: str, response: dict, ttl: int = 3600):
+def cache_response(query: str, response: List[Dict[str, any]], ttl: int = 3600) -> dict:
     """Cache the response in Redis with both hash and vector representation."""
     query_hash = get_query_hash(query)
     query_vector = embeddings.embed_text(query)
@@ -44,9 +44,10 @@ def cache_response(query: str, response: dict, ttl: int = 3600):
     # Store with query vector as key (serialize vector)
     vector_key = f"vector:{json.dumps(query_vector)}"
     redis_client.setex(vector_key, timedelta(seconds=ttl), json.dumps(response))
+    return {"query_hash": query_hash, "query_vector": query_vector}
 
 # exact match search fucntions
-def fetch_cached_response_by_hash(query: str) -> dict:
+def fetch_cached_response_by_hash(query: str) -> dict|List[Dict[str,any]]|None:
     """Fetch the cached response from Redis using query hash if it exists."""
     query_hash = get_query_hash(query)
     data = redis_client.get(query_hash)
@@ -68,7 +69,7 @@ def fetch_all_cached_embeddings() -> dict:
 
 
 # Semantic search function
-def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.8) -> str:
+def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.7) -> List[Dict[str, any]]|None:
     """Perform semantic search on the cached query embeddings in Redis."""
     all_embeddings = fetch_all_cached_embeddings()
     if not all_embeddings:
@@ -89,112 +90,50 @@ def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0
         return best_match_response
     return None
 
+# Vector search function with postgresql table update and caching of new retrieved content
+def perform_vector_search(query: str, score: float) -> List[Dict[str, any]]:
+
+  doc_ids = []
+   
+  response = answer_retriever(query, 0.7)
+  print(json.dumps(response, indent=4))
+  for elem in response:
+    doc_ids.append(elem["UUID"])
+
+  # as it as been retrieved we use the function `update_retrieved_status` from the library `embedding_and_retrieval` to update the db column `retrieved` to True
+  # this could be done somewhere else as well inside 'answer_retriever' with all retireved data being labelled as `retireved` in the db and cached
+  for doc_id in doc_ids:
+    update_retrieved_status(doc_id)
+
+  # then cache the query with the result content obtained in the hash way and the vectorized way
+  cache_response(query, response, ttl=3600) # 86400=1d, 3600=1h
+  return response
+
 #### This the meat function which does the exact match, then, semantic match, then the expensive vector database retireval and cache it if it finds anything for the response
-def handle_query(query: str) -> dict:
+def handle_query_by_calling_cache_then_vectordb_if_fail(query: str, score: float) -> dict:
     """Handle the user query by deciding between cache, semantic search, and vector search."""
-    # Embed the query
-    query_embedding = embeddings.embed_text(query)
+    # vectorize the query for semantic search
+    query_vectorized = embeddings.embed_text(query)
 
     # Try to fetch from cache (Exact Query Match)
     cached_response = fetch_cached_response_by_hash(query)
     if cached_response:
-        return cached_response
+        return {"exact_match_search_response_from_cache": cached_response}
 
     # Perform semantic search if exact query is not found
-    semantic_response = perform_semantic_search_in_redis(query_embedding)
+    semantic_response = perform_semantic_search_in_redis(query_vectorized)
     if semantic_response:
-        return semantic_response
+        return {"semantic_search_response_from_cache": semantic_response}
 
-    # Perform vector search if semantic search is not relevant
-    """
-      Here we can maybe call our library to perform a vector database search (AKA retrieval)
-    """
-    vector_response = perform_vector_search(query)
+    # Perform vector search with score if semantic search is not relevant
+    vector_response = perform_vector_search(query, score)
     if vector_response:
         # Cache the new response with TTL
         cache_response(query, vector_response, ttl=3600)
-        return vector_response
+        return {"vector_search_response_after_cache_failed_to_find", vector_response}
 
     # If no relevant result found, return a default response
     return {"message": "No relevant information found."}
 
 
-
-
-#### ALL THE FOLLOWING ARE EXAMPLES BUT LIBRARIES `query_matching` and `embedding_and_retrieval` will need to be imported to the main `app.py` and not here
-# Example usage how to query the Redis cache
-"""
-query_redis_cache_then_vecotrdb_if_no_cache(query: str) -> any: #check types returned or format all returns to be dict
-  response = handle_query(query)
-  print(json.dumps(response, indent=4))
-  return response
-"""
-
-## example usage to query using the imported library `embedding_and_retrieval`
-# example of how to use it and query for retrieval vector in collection
-"""
-def perform_vector_search(query: str) -> list:
-
-  response = answer_retriever(query, 0.7)
-  print(json.dumps(response, indent=4))
-  content_list = []
-  score_list = [0]
-  for elem in response:
-    if elem["score"] > score_list[0]:
-      score_list.append(elem["score"])
-      doc_id = elem["row_data"]["id"]
-      doc_title = elem["row_data"]["title"]
-      doc_name = elem["row_data"]["doc_name"]
-      content = elem["content"]
-      content_list.append(content)
-      # ...etc...
-      # as it as been retrieved we use the function `update_retrieved_status` from the library `embedding_and_retrieval` to update the db column `retirved` to True
-      # this could be done somewhere else as well inside 'answer_retriever' with all retireved data being labelled as `retireved` in the db and cached
-      update_retrieved_status(doc_id)
-  # then cache the query with the result content obtained in the hash a=way and the vectorized way
-  content_dict = {"responses": []}
-  for elem in content_list:
-    content_dict["response"].append(elem)
-  cache_response(query, content_dict, ttl=3600)
-  return content_list
-"""
-
-# Example how to perform embeding of docs
-USAGE:
-# Assuming we have the document ID and content
-document_id = uuid.uuid4()
-document_content = "Example content of the document chunk."
-cache_document(document_id, document_content)
-update_retrieved_status(document_id)
-
-# clear chache periodically
-import schedule
-import time
-
-# Schedule the cache clearing function
-# maybe here use subprocess to run this kind of app cron job, so TTL is for 1h cached queries and cache is completely cleared once a day with this job here
-schedule.every().day.at("00:00").do(clear_cache)
-schedule.run_pending()
-
-### Store document quality chunks in the postgresql DB
-"""
-### LOGIC FOR THE MOMENT
-Here we need to use the `pdf_parser` library or the `webpage_parser` library. those are going to to load the doc/page and use pandas to get best content store in the db after data cleaning and embedd those documents under the same collection name
-from pdf_parser import *
-from webpage_parser import *
-# workflow:
- - document is loaded, docuement is saved to db after being cleaned (just quality data from it)
-   `from pdf_parser import *
-    from webpage_parser import *`
- - Embedding done on the database data inside the chunking_module library (import of `embedding_and_retireval` library functionsalready done inside the module)
-  `form chunking_module import *`
- - after that we are ready to use here the  library `query_matching` to get user/llm query and perform cahce search first and then vector search if not found in cache
-  `from query_matching import *`
- - need to implement a tool internet search in the agent logic to perform internet search only if this fails
-  `Use agent prompting and conditional edge of langgraph to direct the llm to use internet search if didn't found information or if needed extra information because of info poorness`
- - better use lots of mini tools than one huge and let the llm check. We will just prompting the agent to tell it what is the workflow. So revise functions here to be decomposed in mini tools
-   `list of tools to create to be planned and helps for nodes creation as well so it is a mix of tools and nodes definition titles for the moment: [internet_search_tool, redis_cache_search_tool, embedding_vectordb_search_tool, user_query_analyzer_rephrasing_tool, node_use_tool_or_not_if_not_answer_query, save_initial_query_an_end_outcome_to_key_value_db_and_create_redis_cache_with_long_term_ttl, node_judge_answer_for_new_iteration_or_not]`
- - then build all those mini tools
-
-"""
 

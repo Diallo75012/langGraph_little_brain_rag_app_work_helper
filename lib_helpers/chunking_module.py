@@ -9,35 +9,38 @@ import psycopg2
 import os
 import json
 from dotenv import load_dotenv
-from embedding_and_retrieval import connect_db, fetch_documents, vector_db_create, embeddings, CONNECTION_STRING, COLLECTION_NAME
+from embedding_and_retrieval import connect_db, fetch_documents, vector_db_create, embeddings, embed_all_db_documents,CONNECTION_STRING, COLLECTION_NAME
 from langchain.docstore.document import Document
+from typing import Dict, List
+
 
 load_dotenv()
 
-def fetch_all_documents(conn):
-    """Fetch all documents from the PostgreSQL database."""
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, content FROM documents ORDER BY id")
-    rows = cursor.fetchall()
-    cursor.close()
-    return rows
-
-def create_chunks(rows, chunk_size):
+# function that have th elogic to create chunks from database content and will make sure an overlapping of one row being last in one chunk and firt in the next chunk
+def create_chunks(rows: List[Dict[str, any]], chunk_size: int) -> List[List[Dict[str,any]]]:
     """Create chunks with overlapping content from the fetched rows."""
     chunks = []
     chunk = []
     current_size = 0
 
-    for i, (doc_id, content) in enumerate(rows):
+    for i, row in enumerate(rows):
+        # we keep it simple but we could add the `doc_name` and `title` from the table as metadata of the chunk but need to change `fetch_documents` output to have all columns
+        doc_id = row['id']
+        content = row['content']
         doc_length = len(content)
-
+        
+        # Check if adding the current row exceeds the chunk size
         if current_size + doc_length > chunk_size and chunk:
             # Ensure the last row of the current chunk is the first row of the next chunk
             next_chunk = [{'UUID': chunk[-1]['UUID'], 'content': chunk[-1]['content']}]
+            # append to the full chunk to final list of custom chunks
             chunks.append(chunk)
+            # initalize the row accumulator with last row of previous chunk
             chunk = next_chunk
+            # initalize length considering this previous row added for next row accumulation
             current_size = len(chunk[-1]['content'])
-
+        
+        # accumulated row data to build up chunk until it reaches chunk size
         chunk.append({'UUID': str(doc_id), 'content': content})
         current_size += doc_length
 
@@ -47,21 +50,3 @@ def create_chunks(rows, chunk_size):
 
     return chunks
 
-def embed_chunks(chunks):
-    """Embed chunks using the embedding_and_retrieval module."""
-    for chunk in chunks:
-        chunk_text = json.dumps(chunk)
-        document = Document(page_content=chunk_text)
-        vector_db_create([document], COLLECTION_NAME, CONNECTION_STRING)
-
-def main(chunk_size):
-    """Main function to create and embed chunks."""
-    conn = connect_db()
-    rows = fetch_all_documents(conn)
-    chunks = create_chunks(rows, chunk_size)
-    embed_chunks(chunks)
-    conn.close()
-
-#if __name__ == "__main__":
- #   chunk_size = 1000  # Define your chunk size here
- #   main(chunk_size)

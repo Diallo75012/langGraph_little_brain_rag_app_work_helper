@@ -41,7 +41,7 @@ def create_table_if_not_exists():
 create_table_if_not_exists()
 
 # Function to extract text and sections from a PDF
-def pdf_to_sections(pdf_path):
+def pdf_to_sections(pdf_path) -> list:
     with open(pdf_path, 'rb') as file:
         reader = PyPDF2.PdfFileReader(file)
         text = ""
@@ -94,10 +94,6 @@ def pdf_to_sections(pdf_path):
 
     return data
 
-# Parse the PDF and create a DataFrame
-pdf_data = pdf_to_sections('example.pdf')
-df = pd.DataFrame(pdf_data)
-
 # Initialize the Groq LLM for summarization
 groq_llm_mixtral_7b = ChatGroq(
     temperature=float(os.getenv("GROQ_TEMPERATURE")), 
@@ -111,32 +107,22 @@ def summarize_text(row):
     response = groq_llm_mixtral_7b(row['text'], max_length=50, min_length=25, do_sample=False)
     return response['choices'][0]['text'].strip()
 
-# Apply summarization
-df['summary'] = df.apply(summarize_text, axis=1)
+def get_final_df(pdf_file_name: str):
+  # Parse the PDF and create a DataFrame
+  pdf_data = pdf_to_sections(pdf_file_name)
+  df = pd.DataFrame(pdf_data)
 
-# Generate metadata and add UUID and retrieved fields
-df['id'] = [str(uuid4()) for _ in range(len(df))]
-df['doc_name'] = df['document'].apply(lambda x: os.path.basename(x))
-df['title'] = df['section']
-df['content'] = df['summary']
-df['retrieved'] = False
+  # Apply summarization
+  df['summary'] = df.apply(summarize_text, axis=1) # here use llm to make the summary
 
-# Select only the necessary columns
-df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
+  # Generate metadata and add UUID and retrieved fields
+  df['id'] = [str(uuid4()) for _ in range(len(df))]
+  df['doc_name'] = df['document'].apply(lambda x: os.path.basename(x)) # or just use function var `pdf_file_name`
+  df['title'] = df['section']
+  df['content'] = df['summary']
+  df['retrieved'] = False
 
-# Function to store cleaned data in PostgreSQL
-def store_data(df, conn):
-    cursor = conn.cursor()
-    for _, row in df.iterrows():
-        cursor.execute(
-            "INSERT INTO documents (id, doc_name, title, content, retrieved) VALUES (%s, %s, %s, %s, %s)",
-            (row['id'], row['doc_name'], row['title'], row['content'], row['retrieved'])
-        )
-    conn.commit()
-    cursor.close()
-
-# Store the cleaned data in PostgreSQL
-conn = connect_db()
-store_data(df_final, conn)
-conn.close()
+  # Select only the necessary columns
+  df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
+  return df_final
 

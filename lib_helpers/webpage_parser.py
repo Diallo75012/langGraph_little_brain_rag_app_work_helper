@@ -77,33 +77,19 @@ def summarize_text(row):
     response = groq_llm_mixtral_7b(row['text'], max_length=50, min_length=25, do_sample=False)
     return response['choices'][0]['text'].strip()
 
-# Apply summarization
-df['summary'] = df.apply(summarize_text, axis=1)
+def get_df_final(webpage_url: str):
+  # Apply summarization
+  df['summary'] = df.apply(summarize_text, axis=1)
 
-# Generate metadata and add UUID and retrieved fields
-df['id'] = [str(uuid4()) for _ in range(len(df))]
-df['doc_name'] = df['url'].apply(lambda x: x)
-df['title'] = df['section']
-df['content'] = df['summary']
-df['retrieved'] = False
+  # Generate metadata and add UUID and retrieved fields
+  df['id'] = [str(uuid4()) for _ in range(len(df))]
+  df['doc_name'] = df['url'].apply(lambda x: x)
+  df['title'] = df['section']
+  df['content'] = df['summary']
+  df['retrieved'] = False
 
-# Select only the necessary columns
-df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
-
-# Function to store cleaned data in PostgreSQL
-def store_data(df, conn):
-    cursor = conn.cursor()
-    for _, row in df.iterrows():
-        cursor.execute(
-            "INSERT INTO documents (id, doc_name, title, content, retrieved) VALUES (%s, %s, %s, %s, %s)",
-            (row['id'], row['doc_name'], row['title'], row['content'], row['retrieved'])
-        )
-    conn.commit()
-    cursor.close()
-
-# Store the cleaned data in PostgreSQL
-conn = connect_db()
-store_data(df_final, conn)
-conn.close()
+  # Select only the necessary columns
+  df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
+  return df_final
 
 
