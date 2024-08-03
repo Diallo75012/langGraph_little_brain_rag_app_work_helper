@@ -102,7 +102,7 @@ CONNECTION_STRING = PGVector.connection_string_from_db_params(
 COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 
 # gets all documents from DB
-def fetch_documents() -> List[Dict[str, any]]:
+def fetch_documents() -> List[Dict[str, Any]]:
     """Fetch documents from the PostgreSQL database."""
     conn = connect_db()
     cursor = conn.cursor()
@@ -137,7 +137,7 @@ def create_embedding_collection(all_docs: List[Document], collection_name: str, 
     return {"error": f"An error occured while trying to create embeddings -> {e}"}
 
 # function that created custom document embedding object. Can be used to embed the full database or part of it after web/pdf parsing 
-def embed_all_db_documents(all_docs: List[Dict[str,any]], collection_name: str, connection_string: str) -> None|dict:
+def embed_all_db_documents(all_docs: List[Dict[str,Any]], collection_name: str, connection_string: str) -> None|dict:
   # Convert documents `all_docs` to langchain Document format (List)
   # `all_docs` here is a parameter that is representing our chunk that we want to embed it has the inofrmationof several rows
   docs = [Document(page_content=json.dumps(all_docs)),]
@@ -159,7 +159,7 @@ def vector_db_retrieve(collection: str, connection: str, embedding: OllamaEmbedd
         embedding_function=embedding,
     )
 # retrieve `n` releavnt embedding to user query with score
-def retrieve_relevant_vectors(query: str, top_n: int = 3) -> List[Dict[str, any]]:
+def retrieve_relevant_vectors(query: str, top_n: int = 3) -> List[Dict[str, Any]]:
     """Retrieve the most relevant vectors from PGVector."""
     db = vector_db_retrieve(COLLECTION_NAME, CONNECTION_STRING, embeddings)
     docs_and_similarity_score = db.similarity_search_with_score(query)
@@ -167,10 +167,10 @@ def retrieve_relevant_vectors(query: str, top_n: int = 3) -> List[Dict[str, any]
     # `docs` here is List[Document]
     for docs, score in docs_and_similarity_score[:top_n]:
         # one doc store can ahve several chunk object in it which are dict with keys UUID and content
-        # here `elem` is a List[Dict[str,any]]
+        # here `elem` is a List[Dict[str,Any]]
         for elem in docs:
           data = json.loads(elem.page_content)
-          # here `info` is Dict[str,any]
+          # here `info` is Dict[str,Any]
           for info in data:
             # we form an object dict that we want to collect from vector db with the relevant keys
             results.append({'UUID': info['UUID'], 'content': info['content'], 'score': score})
@@ -190,7 +190,7 @@ def fetch_document_by_uuid(doc_id: uuid.UUID) -> Dict[str, Any]:
         return {}
 
 #### BUSINESS LOGIC OF RETIREVAL: goes to db qith query and get relevance score and then goes to the postgresql db to getthe rest of the row content to form a nice context for quality answer.
-def answer_retriever(query: str, relevance_score: float, top_n: int) -> List[Dict[str, any]]:
+def answer_retriever(query: str, relevance_score: float, top_n: int) -> List[Dict[str, Any]]:
     """Retrieve answers using PGVector and ChatOllama."""
     relevant_vectors = retrieve_relevant_vectors(query, top_n)
     results = []
@@ -206,14 +206,9 @@ def answer_retriever(query: str, relevance_score: float, top_n: int) -> List[Dic
             'UUID': doc['UUID'],
             'score': doc['score'],
             'content': doc['content'],
-            'row_data': document
+            'row_data': document # document is a Dict with id, doc_name, title, content as key (full db row)
           })
     return results
-
-# example of how to use it and query
-query = "Your query here"
-response = answer_retriever(query, 0.7, 4)
-print(json.dumps(response, indent=4))
 
 
 

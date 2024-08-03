@@ -805,15 +805,82 @@ But we will implement a function that does both, if it founds same query, it fet
 
 When all fails, even the vector db search, LLM can use other tools to search online.
  
+____________________________________________________
+
+# retrieve_relevant_vectors object returned:
+List[Dict[str,any]]: [{'UUID': info['UUID'], 'content': info['content'], 'score': score}]
+
+# answer_retriever: Object embedded fields plus db row corresponding to that object. So here we could use the 'row_data' field to get other info needed for answer like `title` and `doc_name`
+List[Dict[str,any]]: [{ 'UUID': doc['UUID'], 'score': doc['score'], 'content': doc['content'], 'row_data': document},]
  
+# similarity_search_with_score
+returns a list ordered from the highest score to the lowest score.
+The higher the score, the more relevant is the answer.
  
- 
- 
- 
- 
- 
- 
- 
+# LangGraph custom state
+You just need to create your custom states and use those in the different tools or nodes functions.
+Therefore, you can create, update, delete those vars as your app is processing different actions
+```python
+from typing import TypedDict
+
+class CustomState(TypedDict):
+    input: str
+    steps_completed: int
+    data: Dict[str, str]
+
+
+def create_initial_state(input_value: str) -> CustomState:
+    return CustomState(input=input_value, steps_completed=0, data={})
+
+# example of function that uses the state in it:
+def step_1(state: CustomState):
+    (...)
+    Some logic
+    (...)
+    Some logic
+    (...)
+    print("---Step 1---")
+    state['steps_completed'] += 1
+    state['data']['step_1'] = "Processed Step 1"
+    return state
+
+(...)
+Node creation
+(...)
+Tools and conditional edges etc...
+(...)
+compilation of graph
+graph=...
+
+from langgraph import GraphRunner
+
+# Create the initial state
+initial_state = create_initial_state("Initial Input")
+
+# Create the graph runner to run the langgraph compile object. Here `graph` is the compiled langgraph graph
+runner = GraphRunner(graph)
+
+# Run the graph
+final_state = runner.run(initial_state)
+
+print("Final State:", final_state)
+```
+
+# Langchain prompts
+- PromptTemplate.from_template(template=a_template_str_with_LCEL_{variable}) = use this with LCEL {variable} and when you invoke pass in the variable, eg.: ...invoke({"variable": "value"})
+- PromptTemplate(template=a_template_str_with_LCEL_{variable}, input_variables=["variable",]) Or use here `.format({"variable": "value"})` or when using invoke pass in the variable. eg.: ...invoke({"variable": "value"}) 
+
+- advanced prompts
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+) 
+
+ # use of invoke, run and predict
+- Use invoke() when you have a full chain involving multiple components (prompt template, LLM, parser) and need to execute the entire chain. so here for chains for example
+- Use run() when you are dealing with a StateGraph or similar workflow structure and need to execute the defined sequence of operations. so here for full graph run for example
+- Use predict() when you need to generate a prediction from a model based on specific input. so here just for input/output from model
  
  
  

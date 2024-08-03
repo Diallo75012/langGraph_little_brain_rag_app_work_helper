@@ -11,13 +11,13 @@ import json
 from dotenv import load_dotenv
 from embedding_and_retrieval import connect_db, fetch_documents, vector_db_create, embeddings, embed_all_db_documents,CONNECTION_STRING, COLLECTION_NAME
 from langchain.docstore.document import Document
-from typing import Dict, List
+from typing import Dict, List, Any
 
 
 load_dotenv()
 
 # function that have th elogic to create chunks from database content and will make sure an overlapping of one row being last in one chunk and firt in the next chunk
-def create_chunks(rows: List[Dict[str, any]], chunk_size: int) -> List[List[Dict[str,any]]]:
+def create_chunks(rows: List[Dict[str, Any]], chunk_size: int) -> List[List[Dict[str,Any]]]:
     """Create chunks with overlapping content from the fetched rows."""
     chunks = []
     chunk = []

@@ -18,6 +18,7 @@ import numpy as np
 from langchain_community.embeddings import OllamaEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
 from embedding_and_retrieval import *
+from typing import Dict, List, Any
 
 
 load_dotenv()
@@ -33,7 +34,7 @@ def get_query_hash(query: str) -> str:
     return hashlib.sha256(query.encode()).hexdigest()
 
 # Record in Redis Both Kind of Keys (hashed for exact match and vector for semantic match)
-def cache_response(query: str, response: List[Dict[str, any]], ttl: int = 3600) -> dict:
+def cache_response(query: str, response: List[Dict[str, Any]], ttl: int = 3600) -> dict:
     """Cache the response in Redis with both hash and vector representation."""
     query_hash = get_query_hash(query)
     query_vector = embeddings.embed_text(query)
@@ -47,7 +48,7 @@ def cache_response(query: str, response: List[Dict[str, any]], ttl: int = 3600) 
     return {"query_hash": query_hash, "query_vector": query_vector}
 
 # exact match search fucntions
-def fetch_cached_response_by_hash(query: str) -> dict|List[Dict[str,any]]|None:
+def fetch_cached_response_by_hash(query: str) -> dict|List[Dict[str,Any]]|None:
     """Fetch the cached response from Redis using query hash if it exists."""
     query_hash = get_query_hash(query)
     data = redis_client.get(query_hash)
@@ -69,7 +70,7 @@ def fetch_all_cached_embeddings() -> dict:
 
 
 # Semantic search function
-def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.7) -> List[Dict[str, any]]|None:
+def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.7) -> List[Dict[str, Any]]|None:
     """Perform semantic search on the cached query embeddings in Redis."""
     all_embeddings = fetch_all_cached_embeddings()
     if not all_embeddings:
@@ -91,11 +92,11 @@ def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0
     return None
 
 # Vector search function with postgresql table update and caching of new retrieved content
-def perform_vector_search(query: str, score: float) -> List[Dict[str, any]]:
+def perform_vector_search(query: str, score: float) -> List[Dict[str, Any]]:
 
   doc_ids = []
    
-  response = answer_retriever(query, 0.7)
+  response = answer_retriever(query, 0.7, 4)
   print(json.dumps(response, indent=4))
   for elem in response:
     doc_ids.append(elem["UUID"])
