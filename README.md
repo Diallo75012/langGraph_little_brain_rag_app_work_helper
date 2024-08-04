@@ -21,10 +21,12 @@ There is not extraction refining process implemented but would be amazing...
 - [x] Do more of the tutorial to have a feel of different way to use it and print the output to familiarize with the different objects
 - [x] Create a function that runs agent code in docker and does it on the fly would be perfect for a tool and safety of kind of sandboxing of agent code
 - [x] Change the pdf/webpage_parser docs in order for those to integrate new db rows and structure and store the right content and have the pandas dataframes with right columns
+- [x] create nodes and edges
+- [ ] create all mini tools
+- [ ] test functions along the way in the workflow of agents and make sure of the output type matches and that it works
 - [ ] Create and test PDF and Webpage parser to get only the quality data and structure it in a good way to enhance embedding/retrieval performances
-- [ ] Read comment in `query_matching.py` to create those logics and functions and nodes and tools functions
-- [ ] From experience gathered, start thinking of a custom graph that you want to create. You should be able to make a simple one and then complicate it along the way
-- [ ] Be creative and create your tutorial on an interesting use case
+- [x] Read comment in `query_matching.py` to create those logics and functions and nodes and tools functions
+- [ ] Find interesting storytelling for use case an interesting use case
 Docs: [LangGraph Doc Workflow Example](https://langchain-ai.github.io/langgraph/tutorials/rag/langgraph_self_rag_local/)
 
 

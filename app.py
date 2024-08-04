@@ -324,6 +324,31 @@ def prompt_creation(target_prompt: dict, **kwargs: Any) -> PromptTemplate:
     #key1: str = Field(description=...)
     #key2: int = Field(description=...)
 
+# using here *args if needed to add a AI prompt. Here **kwargs can be all the variables for all the types of prompts and the injection will pick the right ones
+def chat_prompt_creation(system_prompt: dict, human_prompt: dict, *args, **kwargs) -> ChatPromptTemplate:
+  ai_message_prompt_list = []
+  
+  # define system prompt and user promtp
+  formatted_system_prompt = prompt_creation(system_prompt, **kwargs)
+  formatted_human_prompt = prompt_creation(human_prompt, **kwargs)
+  system_message_prompt = SystemMessagePromptTemplate(prompt=formatted_system_prompt)
+  human_message_prompt = HumanMessagePromptTemplate(prompt=formatted_human_prompt)
+  
+  # can be used as example of answer saying "This is an example of answer..."
+  for arg in args:
+    formatted_ai_message_prompt = prompt_creation(arg, **kwargs)
+    ai_message_prompt = AIMessagePromptTemplate(prompt=formatted_ai_message_prompt)
+    ai_message_prompt_list.append(ai_message_prompt)
+  
+  # instanciate the prompt for the chat
+  if ai_message_prompt:
+    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt, ai_message_prompt_list])
+  else:
+    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
+  
+  return chat_prompt
+
+# call llm using the prompt. LLM can be adapted here by passing it as input parameter
 def invoke_chain(prompt_template: PromptTemplate|ChatPromptTemplate, llm: ChatGroq, parser: JsonOutputParser) -> Any:
     """
     Invokes a chain consisting of a prompt template, an LLM, and a parser to generate a response.
@@ -349,34 +374,10 @@ def invoke_chain(prompt_template: PromptTemplate|ChatPromptTemplate, llm: ChatGr
     return response
 
 
-# using here *args if needed to add a AI prompt. Here **kwargs can be all the variables for all the types of prompts and the injection will pick the right ones
-def chat_prompt_creation(system_prompt: dict, human_prompt: dict, *args, **kwargs) -> ChatPromptTemplate:
-  ai_message_prompt_list = []
-  
-  # define system prompt and user promtp
-  formatted_system_prompt = prompt_creation(system_prompt, **kwargs)
-  formatted_human_prompt = prompt_creation(human_prompt, **kwargs)
-  system_message_prompt = SystemMessagePromptTemplate(prompt=formatted_system_prompt)
-  human_message_prompt = HumanMessagePromptTemplate(prompt=formatted_human_prompt)
-  
-  # can be used as example of answer saying "This is an example of answer..."
-  for arg in args:
-    formatted_ai_message_prompt = prompt_creation(arg, **kwargs)
-    ai_message_prompt = AIMessagePromptTemplate(prompt=formatted_ai_message_prompt)
-    ai_message_prompt_list.append(ai_message_prompt)
-  
-  # instanciate the prompt for the chat
-  if ai_message_prompt:
-    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt, ai_message_prompt_list])
-  else:
-    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
-  
-  return chat_prompt
-
 
 """
 1- import the right prompt and check its required input vars to add those as kwargs to the function
-2- use the template to and the function argument to create the prompt
+2- use the template and the function argument to create the prompt
 3- use the invoke function to get an answer
 """
 
@@ -415,6 +416,178 @@ chat_prompt = chat_prompt_creation(system_prompt_<speciality_of_node_>, human_pr
 3-
 """
 response = invoke_chain(chat_prompt, groq_llm_mixtral_7b, JsonOutputParser)
+
+
+###### CREATE WORKFLOW TO PLAN NODE AND EDGES NEEDS #######
+## 7- CREATE WORKFLOW
+"""
+Here we will create hypothetical desired workflow for the graph
+
+--- START 
+    0--- ask user query input
+    1--- Analyze User Query To Get the Webpage or Document or just text (to know if we need to perform webpage parsing or pdf doc parsing) 
+         --- save to state 'webpage' or 'pdf' or 'text'
+        1.1--- If/Else conditional edge 'db_doc_check':
+           --- output = 'webpage/pdf title IN db'
+           1.1.1--- If webpage title or pdf title in db --- If/Else conditional edge 'cache/vectordb query answer check'
+                                                        1.1.1.1--- If answer in cache/vectordb --- answer user query --- END
+                                                        1.1.1.2--- Else Internet Search about subject
+                                                                   --- Save query/internet_answer to DB
+                                                                       --- Embed query/internet_answer
+                                                                           --- answer user query and cache it
+                                                                               --- END
+           --- output = 'webpage/pdf title NOT IN db'
+           1.1.2--- Else --- If/Else conditional edge 'webpage or pdf processing':
+                         --- output = 'url'
+                         1.1.2.1--- If webpage --- parse webpage
+                                                   --- store to database
+                                                       --- create chunks from database rows
+                                                           --- embed chunks
+                                                               --- save to state 'webpage embedded'
+                                                                   --- go to 1.1.1.1 flow which will search in cache and won't found it and make a vector search and answer-> END
+                         --- output = 'pdf'
+                         1.1.2.2--- If pdf     --- parse pdf
+                                                   --- store to database
+                                                       --- create chunks from database rows
+                                                           --- embed chunks
+                                                               --- save to state 'pdf embedded'
+                                                                   --- go to 1.1.1.1 flow which will search in cache and won't found it and make a vector search and answer-> END
+    2--- Analyze User Query to extract the question from it and rephrase the question to optimize llm information research/retrieval --- save to state 'query/question'
+         3--- Retrieve answer from Query in embedded collection
+              --- save to state answer_retrieved
+                  4--- Internet Search user query
+                       --- save to state internet search_answer
+                           5--- answer to user in markdown report format using both states answer_retrieved/search_answer
+"""
+
+## 8- CREATE NODES, EDGES AND CONDITIONAL EDGES
+
+"""
+creditizens_doc_report_flow = StateGraph(MessagesState)
+creditizens_doc_report_flow.set_entry_point("<node_name>")
+creditizens_doc_report_flow.add_node("<node_name>", <function_associated_to_node_action>)
+# condition adge = conditional route from one node to a function output which will determine next node
+creditizens_doc_report_flow.add_conditional_edges(
+    # From which node
+    "<node_name>",
+    # function that will determine which node is called next
+    <function_with_condition>,
+    # function called output will determine next node
+    {
+      "output1": "<node_name>", # if output == "output1" go to specific node
+      "output2": "<node_name>",  # if output == "output2" go to specific node
+    },
+)
+# edge are route so from node to another
+creditizens_doc_report_flow.add_edge("<node_name1>", "<node_name2>")
+# checkpointer for memory of graph and compile the graph
+checkpointer = MemorySaver()
+creditizens_graph_flow_app = workflow.compile(checkpointer=checkpointer)
+# inject user query in the creditizens_doc_report_flow: "can maybe here think of an app that ask user input to collect it and use it to launch the creditizens_graph_flow_app"
+user_query_to_answer_using_creditizens_graph_flow = creditizens_graph_flow_app.invoke(
+    {"messages": [HumanMessage(content="what is the weather in sf")]},
+    config={"configurable": {"thread_id": 42}}
+)
+user_query_to_answer_using_creditizens_graph_flow["messages"][-1].content
+
+________________________________________________________________________________________
+creditizens_doc_report_flow = StateGraph(MessagesState)
+
+Nodes:
+creditizens_doc_report_flow.add_node("ask_user_input", <function_associated_to_node_action>)
+creditizens_doc_report_flow.add_node("webpage_or_pdf_embedding_or_vector_search", query_analyzer_module.detect_content_type)
+creditizens_doc_report_flow.add_node("user_query_analyzer_type_of_doc_extraction", <function_associated_to_node_action>)
+creditizens_doc_report_flow.add_node("user_query_extract_question_and_rephrase", <function_associated_to_node_action>)
+creditizens_doc_report_flow.add_node("check_if_document_in_db", doc_db_search)
+creditizens_doc_report_flow.add_node("cache_vectordb_search", query_matching.handle_query_by_calling_cache_then_vectordb_if_fail)
+creditizens_doc_report_flow.add_node("answer_user_query", <function_associated_to_node_action>) # this will END
+creditizens_doc_report_flow.add_node("internet_search", <function_associated_to_node_action>)
+# can add also save query and internet search to DB and put in title a llm generated title for this query/answer, and have doc_name being =internet search
+creditizens_doc_report_flow.add_node("save_to_db", <function_associated_to_node_action>)
+creditizens_doc_report_flow.add_node("embed", <function_associated_to_node_action>)
+creditizens_doc_report_flow.add_node("webpage_parser", webpage_parser.get_df_final)
+creditizens_doc_report_flow.add_node("pdf_parser", pdf_parser.get_final_df)
+creditizens_doc_report_flow.add_node("create_chunk", <func>)
+creditizens_doc_report_flow.add_node("markdown_report_creation", <func>)
+
+0              creditizens_doc_report_flow.set_entry_point("ask_user_input")
+1              creditizens_doc_report_flow.add_edge("user_query_analyzer_type_of_doc_extraction", "webpage_or_pdf_embedding_or_vector_search")
+               creditizens_doc_report_flow.add_conditional_edges(
+                 "webpage_or_pdf_embedding_or_vector_search",
+                 query_analyzer_module.detect_content_type,
+                 {
+                   "url": "check_if_document_in_db", 
+                   "pdf": "check_if_document_in_db",
+                   "text": "cache_vectordb_search", # this will go to the flow 2
+                 },
+               )
+1.1            creditizens_doc_report_flow.add_edge("webpage_or_pdf_embedding_or_vector_search", "check_if_document_in_db")
+               creditizens_doc_report_flow.add_conditional_edges(
+                 # From which node
+                 "check_if_document_in_db",
+                 # function that will determine which node is called next
+                 doc_db_search,
+                 # function called output will determine next node
+                 {
+                   "title_found": "cache_vectordb_search", # we go search in cache/vectordb
+                   "title_not_found": "webpage_or_pdf_embedding_or_vector_search",
+                 },
+               )
+1.1.1          creditizens_doc_report_flow.add_edge("check_if_document_in_db", "cache_vectordb_search")
+               creditizens_doc_report_flow.add_conditional_edges(
+                 "cache_vectordb_search",
+                 query_matching.handle_query_by_calling_cache_then_vectordb_if_fail,
+                 {
+                   "answer_found": "answer_user_query", # this will answer and END
+                   
+                   "answer_not_found": "internet_search", # here we will start a long process of nodes and edges
+                 },
+               )
+1.1.1.1        creditizens_doc_report_flow.add_edge("cache_vectordb_search", "answer_user_query") # this will END
+
+1.1.1.2        creditizens_doc_report_flow.add_edge("cache_vectordb_search", "internet_search")
+               # save to db here query and internet search result, llm generated title for this query/answer, and have doc_name being =internet search
+               creditizens_doc_report_flow.add_edge("internet_search", "save_to_db")
+               creditizens_doc_report_flow.add_edge("save_to_db", "embed")
+               creditizens_doc_report_flow.add_edge("embed", "answer_user_query") # this will END
+               
+1.1.2          creditizens_doc_report_flow.add_edge("check_if_document_in_db", "webpage_or_pdf_embedding_or_vector_search")
+               creditizens_doc_report_flow.add_conditional_edges(
+                 "webpage_or_pdf_embedding_or_vector_search",
+                 query_analyzer_module.detect_content_type,
+                 {
+                   "url": "webpage_parser",
+                   "pdf": "pdf_parser",
+                   "text": "user_query_extract_question_and_rephrase", # this will go to the flow 2
+                 },
+               )
+1.1.2.1        creditizens_doc_report_flow.add_edge("webpage_or_pdf_embedding_or_vector_search", "webpage_parser")
+               creditizens_doc_report_flow.add_edge("webpage_parser", "save_to_db")
+               creditizens_doc_report_flow.add_edge("save_to_db", "create_chunks")
+               creditizens_doc_report_flow.add_edge("create_chunks", "embed")
+               creditizens_doc_report_flow.add_edge("embed", cache_vectordb_search)
+               creditizens_doc_report_flow.add_edge("cache_vectordb_search", "answer_user_query") # this will END
+
+1.1.2.2        creditizens_doc_report_flow.add_edge("webpage_or_pdf_embedding_or_vector_search", "pdf_parser")
+               creditizens_doc_report_flow.add_edge("pdf_parser", "save_to_db")
+               creditizens_doc_report_flow.add_edge("save_to_db", "create_chunks")
+               creditizens_doc_report_flow.add_edge("create_chunks", "embed")
+               creditizens_doc_report_flow.add_edge("embed", cache_vectordb_search)
+               creditizens_doc_report_flow.add_edge("cache_vectordb_search", "answer_user_query") # this will END
+
+2              creditizens_doc_report_flow.add_edge("user_query_extract_question_and_rephrase", "webpage_or_pdf_embedding_or_vector_search")
+               creditizens_doc_report_flow.add_edge("webpage_or_pdf_embedding_or_vector_search", "cache_vectordb_search")
+               creditizens_doc_report_flow.add_edge("cache_vectordb_search", "internet_search")
+3              creditizens_doc_report_flow.add_edge("internet_search", "markdown_report_creation")
+4              creditizens_doc_report_flow.add_edge("markdown_report_creation", END)
+
+For all conditional edge to make it simpler for some, save to state the value of the function return and get just the state value in the conditional edge
+"""
+## 10- CREATE CONFIGS FOR GRAPH INTERRUPTION OR OTHER NEEDS
+
+
+
+
 
 
 
