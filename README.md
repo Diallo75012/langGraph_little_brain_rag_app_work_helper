@@ -22,6 +22,7 @@ There is not extraction refining process implemented but would be amazing...
 - [x] Create a function that runs agent code in docker and does it on the fly would be perfect for a tool and safety of kind of sandboxing of agent code
 - [x] Change the pdf/webpage_parser docs in order for those to integrate new db rows and structure and store the right content and have the pandas dataframes with right columns
 - [x] create nodes and edges
+- [ ] create all the extra functions matching each nodes
 - [ ] create all mini tools
 - [ ] test functions along the way in the workflow of agents and make sure of the output type matches and that it works
 - [ ] Create and test PDF and Webpage parser to get only the quality data and structure it in a good way to enhance embedding/retrieval performances

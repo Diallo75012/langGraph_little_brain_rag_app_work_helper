@@ -3,19 +3,33 @@ from typing import Annotated, Literal, TypedDict
 from langchain_core.messages import HumanMessage
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
-from langchain.prompts.chat import (
+from langchain.prompts import (
+  PromptTemplate,
   ChatPromptTemplate,
   SystemMessagePromptTemplate,
   HumanMessagePromptTemplate,
   AIMessagePromptTemplate
 )
+from langchain_core.output_parsers import JsonOutputParser
 from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode
-from langgraph import GraphRunner
 from dotenv import load_dotenv
 import psycopg2
 from typing import TypedDict, Dict, List, Any
+#### MODULES #####
+from prompts import prompts
+# USER QUERY ANALYSIS AND TRANSFORMATION
+from lib_helpers.query_analyzer_module import *
+# INITIAL DOC PARSER, STORER IN POSTGRESL DB TABLE
+from lib_helpers.pdf_parser import *
+from lib_helpers.webpage_parser import *
+# CUSTOM CHUNKING
+from lib_helpers.chunking_module import *
+# REDIS CACHE RETRIEVER
+from lib_helpers.query_matching import *
+# VECTORDB EMBEDDINGS AND RETRIEVAL
+from lib_helpers.embedding_and_retrieval import *
 
 
 # load env vars
@@ -73,54 +87,54 @@ def search(query: str):
 
 
 tools = [search]
-print("Tools: ", tools)
+# print("Tools: ", tools)
 
 tool_node = ToolNode(tools)
-print("tool_node: ", tool_node)
+# print("tool_node: ", tool_node)
 
 model = groq_llm_llama3_70b.bind_tools(tools)
-print("Model with bind_tools: ", model)
+# print("Model with bind_tools: ", model)
 
 
 # Define the function that determines whether to continue or not
 def should_continue(state: MessagesState) -> Literal["tools", END]:
     messages = state['messages']
-    print("messages from should_continue func: ", messages)
+    # print("messages from should_continue func: ", messages)
     last_message = messages[-1]
-    print("last message from should_continue func: ", last_message)
+    # print("last message from should_continue func: ", last_message)
     # If the LLM makes a tool call, then we route to the "tools" node
     if last_message.tool_calls:
-        print("Tool called!")
+        # print("Tool called!")
         return "tools"
     # Otherwise, we stop (reply to the user)
-    print("Tool not called returning answer to user.")
+    # print("Tool not called returning answer to user.")
     return END
 
 
 # Define the function that calls the model
 def call_model(state: MessagesState):
     messages = state['messages']
-    print("messages from call_model func: ", messages)
+    # print("messages from call_model func: ", messages)
     response = model.invoke(messages)
-    print("response from should_continue func: ", response)
+    # print("response from should_continue func: ", response)
     # We return a list, because this will get added to the existing list
     return {"messages": [response]}
 
 
 # Define a new graph
 workflow = StateGraph(MessagesState)
-print("workflow: ", workflow)
+# print("workflow: ", workflow)
 
 # Define the two nodes we will cycle between
 workflow.add_node("agent", call_model)
-print("Workflow add node 'agent': ", workflow)
+# print("Workflow add node 'agent': ", workflow)
 workflow.add_node("tools", tool_node)
-print("Workflow add node 'tools': ", workflow)
+# print("Workflow add node 'tools': ", workflow)
 
 # Set the entrypoint as `agent`
 # This means that this node is the first one called
 workflow.set_entry_point("agent")
-print("Workflow set entry point 'agent': ", workflow)
+# print("Workflow set entry point 'agent': ", workflow)
 
 # We now add a conditional edge
 workflow.add_conditional_edges(
@@ -130,33 +144,33 @@ workflow.add_conditional_edges(
     # Next, we pass in the function that will determine which node is called next.
     should_continue,
 )
-print("Workflow add conditional edge 'agent' -> should_continue func: ", workflow)
+# print("Workflow add conditional edge 'agent' -> should_continue func: ", workflow)
 
 # We now add a normal edge from `tools` to `agent`.
 # This means that after `tools` is called, `agent` node is called next.
 workflow.add_edge("tools", 'agent')
-print("Workflow add edge 'tools' -> 'agent': ", workflow)
+# print("Workflow add edge 'tools' -> 'agent': ", workflow)
 
 # Initialize memory to persist state between graph runs
 checkpointer = MemorySaver()
-print("MEmory checkpointer: ", checkpointer)
+# print("MEmory checkpointer: ", checkpointer)
 
 # Finally, we compile it!
 # This compiles it into a LangChain Runnable,
 # meaning you can use it as you would any other runnable.
 # Note that we're (optionally) passing the memory when compiling the graph
 app = workflow.compile(checkpointer=checkpointer)
-print("App compiled with checkpointer: ", app)
+# print("App compiled with checkpointer: ", app)
 
 # Use the Runnable
 final_state = app.invoke(
     {"messages": [HumanMessage(content="what is the weather in sf")]},
     config={"configurable": {"thread_id": 42}}
 )
-print("Final State = answer: ", final_state)
+# print("Final State = answer: ", final_state)
 
 final_state["messages"][-1].content
-print("Final state last message content: ", final_state["messages"][-1].content)
+# print("Final state last message content: ", final_state["messages"][-1].content)
 
 
 #########################################################################################
@@ -171,18 +185,6 @@ print("Final state last message content: ", final_state["messages"][-1].content)
  - then build all those mini tools
 
 """
-# USER QUERY ANALYSIS AND TRANSFORMATION
-from lib_helpers.query_analyzer_module import *
-# INITIAL DOC PARSER, STORER IN POSTGRESL DB TABLE
-from lib_helpers.pdf_parser import *
-from lib_helpers.webpage_parser import *
-# CUSTOM CHUNKING
-from lib_helpers.chunking_module import *
-# REDIS CACHE RETRIEVER
-from lib_helpers.query_matching import *
-# VECTORDB EMBEDDINGS AND RETRIEVAL
-from lib_helpers.embedding_and_retrieval import *
-
 
 ##### QUERY & EMBEDDINGS #####
 ## 1- IDENTIFY IF QUERY IS FOR A PFD OR A WEB PAGE
@@ -275,6 +277,7 @@ def query_redis_cache_then_vecotrdb_if_no_cache(query: str, score: float) -> Lis
 ###### INTERNET SEARCH TOOL ######
 ## -5 PERFORM INTERNET SEARCH IF NO ANSWER FOUND IN REDIS OR PGVECTOR
 from langchain_core.tools import Tool
+from langchain_community.tools import DuckDuckGoSearchRun, DuckDuckGoSearchResults # Run vs Results: Results have more information 
 internet_search_tool = DuckDuckGoSearchRun()
 tool_internet = Tool(
     name="duckduckgo_search",
@@ -282,7 +285,7 @@ tool_internet = Tool(
     func=internet_search_tool.run,
 )
 internet = [tool_internet]
-llm_with_internet_searhc_tool = llm.bind_tools(internet)
+llm_with_internet_searhc_tool = groq_llm_mixtral_7b.bind_tools(internet)
 
 ##### PROMPTS CREATION TO EXPLAIN TO LLM WHAT TO DO AND CONDITIONS IF ANY #####
 ## 6- CREATE PROMPT TO INSTRUCT LLM
@@ -292,14 +295,12 @@ Langfuse can also be used here to store prompts that we will just call in the gr
 But we will first here create prompts in the conventional way before testing the langfuse way (to have the need of less dependencies and jsut use langchain and langgraph)
 """
 
-from langchain_core.prompts.prompt import PromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from prompts import prompts
-
 
 # create prompts format, we can pass in as many kwargs as wanted it will unfold and place it properly, make sure to know which imput_variables are matching your prompt template
 # **kwargs mean you can pass in as many: var1=...., var2=..., var3=.... etc...
-def prompt_creation(target_prompt: dict, **kwargs: Any) -> PromptTemplate:
+
+
+def prompt_creation(target_prompt: Dict[str, Any], **kwargs: Any) -> PromptTemplate:
     """
     Creates a PromptTemplate using the provided target_prompt dictionary and keyword arguments.
     
@@ -310,12 +311,19 @@ def prompt_creation(target_prompt: dict, **kwargs: Any) -> PromptTemplate:
     Returns:
     PromptTemplate: The formatted prompt template.
     """
-    final_prompt = PromptTemplate(
-        template=target_prompt["template"],
-        input_variables=target_prompt["input_variables"]
-    ).format(**kwargs)
+    input_variables = target_prompt.get("input_variables", [])
     
-    return final_prompt
+    prompt = PromptTemplate(
+        template=target_prompt["template"],
+        input_variables=input_variables
+    )
+    
+    formatted_template = prompt.format(**kwargs) if input_variables else target_prompt["template"]
+    
+    return PromptTemplate(
+        template=formatted_template,
+        input_variables=[]
+    )
 
 # here we don't use pydantic to precise what schema should be returned 
 # but we could create a pydantic class ineriting from `BaseModel` that would provide the schema 
@@ -325,28 +333,51 @@ def prompt_creation(target_prompt: dict, **kwargs: Any) -> PromptTemplate:
     #key2: int = Field(description=...)
 
 # using here *args if needed to add a AI prompt. Here **kwargs can be all the variables for all the types of prompts and the injection will pick the right ones
-def chat_prompt_creation(system_prompt: dict, human_prompt: dict, *args, **kwargs) -> ChatPromptTemplate:
-  ai_message_prompt_list = []
+def chat_prompt_creation(system_prompt: Dict[str, Any], human_prompt: Dict[str, Any], *args: Dict[str, Any], **kwargs: Any) -> ChatPromptTemplate:
+    """
+    Creates a chat prompt template using system, human, and optional AI message prompts.
+    
+    Args:
+    system_prompt (dict): The system message prompt template.
+    human_prompt (dict): The human message prompt template.
+    *args: Additional AI message prompts.
+    **kwargs: Variables to be injected into the prompt templates.
+    
+    Returns:
+    ChatPromptTemplate: The formatted chat prompt template.
+    """
+    ai_message_prompt_list = []
   
-  # define system prompt and user promtp
-  formatted_system_prompt = prompt_creation(system_prompt, **kwargs)
-  formatted_human_prompt = prompt_creation(human_prompt, **kwargs)
-  system_message_prompt = SystemMessagePromptTemplate(prompt=formatted_system_prompt)
-  human_message_prompt = HumanMessagePromptTemplate(prompt=formatted_human_prompt)
+    # define system prompt and user prompt
+    formatted_system_prompt = prompt_creation(system_prompt, **kwargs)
+    formatted_human_prompt = prompt_creation(human_prompt, **kwargs)
+
+    # Ensure the formatted prompts are instances of PromptTemplate
+    if not isinstance(formatted_system_prompt, PromptTemplate):
+        raise ValueError("formatted_system_prompt is not an instance of PromptTemplate")
+    if not isinstance(formatted_human_prompt, PromptTemplate):
+        raise ValueError("formatted_human_prompt is not an instance of PromptTemplate")
+
+    system_message_prompt = SystemMessagePromptTemplate(prompt=formatted_system_prompt)
+    human_message_prompt = HumanMessagePromptTemplate(prompt=formatted_human_prompt)
+    print("system message prompt: ", system_message_prompt)
+    print("human message prompt: ", human_message_prompt)
   
-  # can be used as example of answer saying "This is an example of answer..."
-  for arg in args:
-    formatted_ai_message_prompt = prompt_creation(arg, **kwargs)
-    ai_message_prompt = AIMessagePromptTemplate(prompt=formatted_ai_message_prompt)
-    ai_message_prompt_list.append(ai_message_prompt)
+    # can be used as example of answer saying "This is an example of answer..."
+    for arg in args:
+        formatted_ai_message_prompt = prompt_creation(arg, **kwargs)
+        if not isinstance(formatted_ai_message_prompt, PromptTemplate):
+            raise ValueError("formatted_ai_message_prompt is not an instance of PromptTemplate")
+        ai_message_prompt = AIMessagePromptTemplate(prompt=formatted_ai_message_prompt)
+        ai_message_prompt_list.append(ai_message_prompt)
   
-  # instanciate the prompt for the chat
-  if ai_message_prompt:
-    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt, ai_message_prompt_list])
-  else:
-    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
+    # instantiate the prompt for the chat
+    if ai_message_prompt_list:
+        chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt, *ai_message_prompt_list])
+    else:
+        chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
   
-  return chat_prompt
+    return chat_prompt
 
 # call llm using the prompt. LLM can be adapted here by passing it as input parameter
 def invoke_chain(prompt_template: PromptTemplate|ChatPromptTemplate, llm: ChatGroq, parser: JsonOutputParser) -> Any:
@@ -366,6 +397,7 @@ def invoke_chain(prompt_template: PromptTemplate|ChatPromptTemplate, llm: ChatGr
 
     # Invoke the chain and get the response
     response = chain_for_type_of_action.invoke()
+
  
     # Validate and return the response using the Pydantic model: this is if we had used Pydantic to enforce output schema
     #validated_response = ResponseSchema(**response)
@@ -382,14 +414,16 @@ def invoke_chain(prompt_template: PromptTemplate|ChatPromptTemplate, llm: ChatGr
 """
 
 """
-1-
+#1-
+"""
+
 """
 # we pass variables using Dict[str,Any] buut we can also iterate through a List[Dict[str,Any]] by using `.format(**name_or_var_List[Dict[str,Any]])`
 # we call the module having all prompts and extract the one we need
 query_answer_retrieved_prompt: dict = prompts.prompt_query_answer_retrieved_llm_response_formatting_instruction
 
 """
-1-
+#1-
 """
 # Chat promtps system, human amd optionally AI
 system_prompt_<speciality_of_node_> : dict = prompts.system_prompt_<speciality_of_node_> 
@@ -400,23 +434,24 @@ human_prompt_<human_need> : dict = prompts.human_prompt_<human_need>
 
 # retrieved answer prompt to get an answer formatted correctly
 """
-2-
+#2-
 """
 final_prompt = prompt_creation(query_answer_retrieved_prompt, quer=..., answer=retrieved_data, example=...)
 """
-3-
+#3-
 """
 response = invoke_chain(final_prompt, groq_llm_mixtral_7b, JsonOutputParser)
 # Chat Prompting with system, human and AI would look like this:
 """
-2-
+#2-
 """
 chat_prompt = chat_prompt_creation(system_prompt_<speciality_of_node_>, human_prompt_<human_need>, ai_prompt_<ai_speciality>, query=..., answer=..., retrieved_answer=..., example=....)
 """
-3-
+#3-
 """
 response = invoke_chain(chat_prompt, groq_llm_mixtral_7b, JsonOutputParser)
 
+"""
 
 ###### CREATE WORKFLOW TO PLAN NODE AND EDGES NEEDS #######
 ## 7- CREATE WORKFLOW

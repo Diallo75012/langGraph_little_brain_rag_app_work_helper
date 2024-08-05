@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 import numpy as np
 from langchain_community.embeddings import OllamaEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
-from embedding_and_retrieval import *
+from lib_helpers.embedding_and_retrieval import *
 from typing import Dict, List, Any
 
 

@@ -39,14 +39,16 @@ def create_table_if_not_exists():
     """Create the documents table if it doesn't exist."""
     conn = connect_db()
     cursor = conn.cursor()
+    """
     # here doc_name is the document where the data have been extracted from, title is the section/chapter.paragraph title, content is the chunck content, retrieved is a boolean to check if document has been retrieved in the past or not to create later on a cache of that data so that it will improve retrieval if we get same kind of query (using special agent node to check that, and cache Redis with TTL and reset of that column so we need a function that does that, one that created the cache based on that column True and put in in Redis with TTL and another which clears the cache everyday.week.month.. and reset that column to False)
+    """
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS documents (
             id UUID PRIMARY KEY,
             doc_name TEXT,
             title TEXT,
             content TEXT,
-            retrieved BOOLEAN,
+            retrieved BOOLEAN
         );
     """)
     conn.commit()

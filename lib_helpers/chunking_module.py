@@ -9,7 +9,6 @@ import psycopg2
 import os
 import json
 from dotenv import load_dotenv
-from embedding_and_retrieval import connect_db, fetch_documents, vector_db_create, embeddings, embed_all_db_documents,CONNECTION_STRING, COLLECTION_NAME
 from langchain.docstore.document import Document
 from typing import Dict, List, Any
 

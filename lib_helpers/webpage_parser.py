@@ -8,7 +8,7 @@ import psycopg2
 from uuid import uuid4
 from dotenv import load_dotenv
 import os
-from langchain_community.chat_models import ChatGroq
+from langchain_groq import ChatGroq
 
 load_dotenv()
 

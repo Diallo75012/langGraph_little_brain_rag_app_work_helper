@@ -1,54 +1,116 @@
 import os
-from typing import List, Dict, Union, Optional, Callable, Tuple
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
+from prompts import prompts
+from app import prompt_creation, chat_prompt_creation
+from langchain_core.output_parsers import JsonOutputParser
+from prompts.prompts import test_prompt, test_system_prompt
 
 
-import subprocess
+load_dotenv()
 
-def run_script_in_docker(dockerfile_name_to_run_script: str, agent_script_file_name: str) -> Tuple[str, str]:
+groq_llm_mixtral_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_MIXTRAL_7B"),
+max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 
-    # Write the script content to a file
-    with open("agent_created_script_to_execute_in_docker.py", "w", encoding="utf-8") as going_to_docker_script_file, open(agent_script_file_name, "r", encoding="utf-8") as script_content:
-        going_to_docker_script_file.write(script_content.read())
+import re
+from typing import Tuple
+# Utility function to determine if the query contains a PDF or URL
+def detect_content_type(query: str) -> Tuple:
+    """
+    Utility function to determine if the query contains a PDF or URL.
 
-    # Create the dockerfile for the agent to run the script inside docker
-    with open(dockerfile_name_to_run_script, "w", encoding="utf-8") as docker_file:
-        docker_file.write("FROM python:3.9-slim\n")
-        docker_file.write("COPY requirements.txt .\n")
-        docker_file.write("RUN pip install --no-cache-dir -r requirements.txt\n")
-        docker_file.write("COPY agent_created_script_to_execute_in_docker.py /app/agent_created_script_to_execute_in_docker.py\n")
-        docker_file.write("COPY .env /app/.env\n")
-        docker_file.write("WORKDIR /app\n")
-        docker_file.write('CMD ["python", "agent_created_script_to_execute_in_docker.py"]')
+    Args:
+    query (str): The user query string.
 
-    try:
-        # Build the Docker image
-        build_command = ['docker', 'build', '-t', 'sandbox-python', '-f', f'{dockerfile_name_to_run_script}', '.']
-        subprocess.run(build_command, check=True)
+    Returns:
+    tuple: A tuple containing the type of content ('pdf', 'url', or 'text') and the detected content (URL or query).
+    """
+    pdf_pattern = r"https?://[^\s]+\.pdf"
+    url_pattern = r"https?://[^\s]+"
 
-        # Run the Docker container and capture the output
-        run_command = ['docker', 'run', '--rm', 'sandbox-python']
-        result = subprocess.run(run_command, capture_output=True, text=True)
+    if re.search(pdf_pattern, query):
+        return 'pdf', re.search(pdf_pattern, query).group(0)
+    elif re.search(url_pattern, query):
+        return 'url', re.search(url_pattern, query).group(0)
+    else:
+        return 'text', query
 
-        stdout, stderr = result.stdout, result.stderr
-        with open("agent_docker_script_execution_result.md", "w", encoding="utf-8") as script_execution_result:
-          script_execution_result.write("# Python script executed in docker, this is the result of captured stdout and stderr")
-          script_execution_result.write("""
-            This is the result after the execution of the code
-            Returns:
-            stdout str: the standard output of the script execution which runs in docker, therefore, we capture the stdout to know if the script output is as expected. You need to analyze it and see why it is empty if emppty, why it is not as expected to suggest code fix, and if the script executes correctly, get this stdout value and answer using markdown ```python ``` saying just one word: OK'
-            stderr str: the standard error of the script execution. If this value is not empty answer witht the content of the value with a suggestion in how to fix it. Answer using mardown and put a JSON of the error message with key ERROR between this ```python ```. 
-          """)
-          script_execution_result.write(f"\n\nstdout: {stdout}\nstderr: {stderr}")
+def llm_call(query: str) -> str:
+  message=[
+          (
+            "system",
+             """
+              - Identify if the user query have a .pdf file in it, or an url, or just text, also if there is any clear question to rephrase it in a easy way for an llm to be able to retrieve it easily in a vector db. 
+              - If non of those found or any of those just put an empty string as value in the corresponding key in the response schema.
+              - User might not clearly write the url if any. It could be identified when having this patterm: `<docmain_name>.<TLD: top level domain>`. Make sure to analyze query thouroughly to not miss any url.
+              - Put your answer in this schema:
+                {
+                  'url': <url in user query make sure that it always has https. and get url from the query even if user omits the http>,
+                  'pdf': <pdf full name or path in user query>,
+                  'text': <if text only without any webpage url or pdf file .pdf path or file just put here the user query>,
+                  'question': <if quesiton identified in user query rephrase it in an easy way to retrieve data from vector database search without the filename and in a good english grammatical way to ask question>
+                }
+              Answer only with the schema in markdown between ```python ```.
+             """
+           ),
+          (
+            "human", "I have been in the ecommerce site chikarahouses.com and want to know if they have nice product for my Japanese garden",
+          )
+         ]
 
-    except subprocess.CalledProcessError as e:
-        stdout, stderr = '', str(e)
-    finally:
-        # Remove the Docker image
-        cleanup_command = ['docker', 'rmi', '-f', 'sandbox-python']
-        subprocess.run(cleanup_command, check=False)
+  llm_called = groq_llm_mixtral_7b.invoke(message)
 
-    # Return the captured output
-    return stdout, stderr
+  print("LLM call answer: ", llm_called.content)
+
+  llm_called_answer = llm_called.content.split("```")[1].strip("python").strip()
+  return llm_called_answer
 
 
-print(run_script_in_docker("test_dockerfile", "./app.py"))
+def test(query: str) -> str:
+  system_prompt = {"template": """
+              - Identify if the user query have a .pdf file in it, or an url, or just text, also if there is any clear question to rephrase it in a easy way for an llm to be able t>
+              - If non of those found or any of those just put an empty string as value in the corresponding key in the response schema.
+              - User might not clearly write the url if any. It could be identified when having this patterm: `<docmain_name>.<TLD: top level domain>`. Make sure to analyze query t>
+              - Put your answer in this schema:
+                  {
+                    'url': <url in user query make sure that it always has https. and get url from the query even if user omits the http>,
+                    'pdf': <pdf full name or path in user query>,
+                    'text': <if text only without any webpage url or pdf file .pdf path or file just put here the user query>,
+                    'question': <if quesiton identified in user query rephrase it in an easy way to retrieve data from vector database search without the filename and in a good engli>
+                  }
+              - Answer only with the schema in markdown between ```python ```.
+             """,
+             "input_variables": [],
+  }
+  print("System prompt: ", system_prompt)
+  human_prompt = {"template": """
+                  {query}
+                """,
+                "input_variables": ["query"],
+  }
+  print("Human prompt: ", human_prompt)
+  chat_prompt = chat_prompt_creation(system_prompt, human_prompt, query=query.strip())
+  print("Chat Prompt: ", chat_prompt)
+
+  response = invoke_chain(chat_prompt, groq_llm_mixtral_7b, JsonOutputParser())
+  # llm_called = groq_llm_mixtral_7b.invoke(chat_prompt)
+
+  print("LLM call answer: ", response.content)
+
+  llm_called_answer = response.content.split("```")[1].strip("python").strip()
+  return llm_called_answer
+
+
+
+# user_input = input("Enter You Query: ")
+user_input = "I have been in the ecommerce site chikarahouses.com and want to know if they have nice product for my Japanese garden"
+# print(detect_content_type(user_input.strip()))
+#print(test(user_input.strip()))
+
+
+a = prompt_creation(test_prompt, test_var="Junko")
+print("A: ", a)
+b = prompt_creation(test_system_prompt, test_var="Junko")
+print("B: ", b)
+c = chat_prompt_creation(test_system_prompt, test_prompt, test_var="Junko")
+print("C: ", c)

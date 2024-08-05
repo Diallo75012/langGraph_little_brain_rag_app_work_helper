@@ -883,17 +883,147 @@ from langchain.prompts.chat import (
 - Use predict() when you need to generate a prediction from a model based on specific input. so here just for input/output from model
  
  
+ # ISSUES
  
+## PromptTemplate object
+One import used did not return a `PromptTemplate` but a `str` which is annoying
+- from langchain_core.prompts.prompt import PromptTemplate : type = `str`
+- from langchain.prompts import PromptTemplate : type = `PromptTemplate`
  
- 
- 
- 
- 
- 
- 
- 
- 
- 
+## Incorrect Type Checking:
+- The original type checks were checking if the formatted prompt was of type str instead of PromptTemplate.
+```python
+if not isinstance(formatted_system_prompt, str):
+    raise ValueError("formatted_system_prompt is not an instance of PromptTemplate")
+if not isinstance(formatted_human_prompt, str):
+    raise ValueError("formatted_human_prompt is not an instance of PromptTemplate")
+```
+This check should verify if the prompt is an instance of PromptTemplate, not str.
+
+- Correct Type Checking:
+The corrected code properly checks if the formatted prompts are instances of PromptTemplate.
+```python
+if not isinstance(formatted_system_prompt, PromptTemplate):
+    raise ValueError("formatted_system_prompt is not an instance of PromptTemplate")
+if not isinstance(formatted_human_prompt, PromptTemplate):
+    raise ValueError("formatted_human_prompt is not an instance of PromptTemplate")
+```
+
+## Returning String Instead of PromptTemplate:
+
+- The prompt_creation function returned a str when formatting the template, but it should always return a PromptTemplate.
+```python
+if input_variables:
+    return PromptTemplate(
+        template=target_prompt["template"],
+        input_variables=input_variables
+    ).format(**kwargs)
+else:
+    return PromptTemplate(
+        template=target_prompt["template"],
+        input_variables=input_variables
+    )
+```
+This code incorrectly handles the formatting and type of the returned object.
+
+- Returning PromptTemplate Instead of str:
+The prompt_creation function ensures that it always returns a PromptTemplate, even after formatting.
+```python
+def prompt_creation(target_prompt: Dict[str, Any], **kwargs: Any) -> PromptTemplate:
+    input_variables = target_prompt.get("input_variables", [])
+    
+    prompt = PromptTemplate(
+        template=target_prompt["template"],
+        input_variables=input_variables
+    )
+    
+    formatted_template = prompt.format(**kwargs) if input_variables else target_prompt["template"]
+    
+    return PromptTemplate(
+        template=formatted_template,
+        input_variables=[]
+    )
+```
+
+## Improper Handling of Empty Input Variables:
+
+- The original code does not correctly handle cases when input_variables is empty, leading to potential errors during formatting or type mismatches.
+
+- Proper Handling of Empty Input Variables:
+The corrected code handles cases where input_variables might be empty by defaulting to an empty list.
+```python
+input_variables = target_prompt.get("input_variables", [])
+```
+
+## Incorrect Prompt Initialization:
+
+- When initializing SystemMessagePromptTemplate and HumanMessagePromptTemplate, the prompt should be a PromptTemplate, not a dictionary or string.
+```python
+system_message_prompt = SystemMessagePromptTemplate(prompt={"template": formatted_system_prompt.template})
+```
+
+## Correct Prompt Initialization:
+
+- The corrected code initializes SystemMessagePromptTemplate and HumanMessagePromptTemplate with the PromptTemplate directly.
+```python
+system_message_prompt = SystemMessagePromptTemplate(prompt=formatted_system_prompt)
+human_message_prompt = HumanMessagePromptTemplate(prompt=formatted_human_prompt)
+```
+
+## Corrected full functions and imports"
+```python
+from typing import Dict, Any
+from langchain.prompts import PromptTemplate, ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, AIMessagePromptTemplate
+
+def prompt_creation(target_prompt: Dict[str, Any], **kwargs: Any) -> PromptTemplate:
+    input_variables = target_prompt.get("input_variables", [])
+    
+    prompt = PromptTemplate(
+        template=target_prompt["template"],
+        input_variables=input_variables
+    )
+    
+    formatted_template = prompt.format(**kwargs) if input_variables else target_prompt["template"]
+    
+    return PromptTemplate(
+        template=formatted_template,
+        input_variables=[]
+    )
+
+def chat_prompt_creation(system_prompt: Dict[str, Any], human_prompt: Dict[str, Any], *args: Dict[str, Any], **kwargs: Any) -> ChatPromptTemplate:
+    ai_message_prompt_list = []
+  
+    # Define system prompt and user prompt
+    formatted_system_prompt = prompt_creation(system_prompt, **kwargs)
+    formatted_human_prompt = prompt_creation(human_prompt, **kwargs)
+
+    # Ensure the formatted prompts are instances of PromptTemplate
+    if not isinstance(formatted_system_prompt, PromptTemplate):
+        raise ValueError("formatted_system_prompt is not an instance of PromptTemplate")
+    if not isinstance(formatted_human_prompt, PromptTemplate):
+        raise ValueError("formatted_human_prompt is not an instance of PromptTemplate")
+
+    system_message_prompt = SystemMessagePromptTemplate(prompt=formatted_system_prompt)
+    human_message_prompt = HumanMessagePromptTemplate(prompt=formatted_human_prompt)
+    print("system message prompt: ", system_message_prompt)
+    print("human message prompt: ", human_message_prompt)
+  
+    # Can be used as an example of an answer saying "This is an example of answer..."
+    for arg in args:
+        formatted_ai_message_prompt = prompt_creation(arg, **kwargs)
+        if not isinstance(formatted_ai_message_prompt, PromptTemplate):
+            raise ValueError("formatted_ai_message_prompt is not an instance of PromptTemplate")
+        ai_message_prompt = AIMessagePromptTemplate(prompt=formatted_ai_message_prompt)
+        ai_message_prompt_list.append(ai_message_prompt)
+  
+    # Instantiate the prompt for the chat
+    if ai_message_prompt_list:
+        chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt, *ai_message_prompt_list])
+    else:
+        chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
+  
+    return chat_prompt
+```
  
 
 
