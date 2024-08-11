@@ -1024,8 +1024,73 @@ def chat_prompt_creation(system_prompt: Dict[str, Any], human_prompt: Dict[str, 
   
     return chat_prompt
 ```
- 
 
+
+
+### Lot of confusion around prompt and errors: The following is from the doc, just follow that!!!
+
+##### NORMAL VERSION
+from langchain_core.prompts import PromptTemplate
+from langchain.chains import LLMChain
+
+# get the template part of the prompt
+prompt = (
+    PromptTemplate.from_template("Tell me a joke about {topic}")
+    + ", make it funny"
+    + "\n\nand in {language}"
+)
+# get input variable if any for the prompt template part if using .format
+prompt.format(topic="sports", language="spanish")
+
+# for example for the model
+model = ChatGroq(...)
+
+# or if not using .format just put prompt in LLMChain and put input vars in run()
+chain = LLMChain(llm=model, prompt=prompt)
+chain.run(topic="sports", language="spanish")
+
+# make the function for that: prompt_template is going to be imported from the prompt module
+def make_normal_prompt(prompt_template: Dict, **kwargs):
+  model = ChatGroq(...)
+  prompt = (
+    PromptTemplate.from_template(prompt_template["template"])
+  )
+  
+  if prompt_template["input_variables"]:
+    chain = LLMChain(llm=model, prompt=prompt)
+    response = chain.run(**kwargs)
+    return response.content.split("```")[1].strip("python").strip()
+
+  chain = LLMChain(llm=model, prompt=prompt)
+  response = chain.run()
+  return response.content.split("```")[1].strip("python").strip()
+
+_____________________________
+
+##### CHAT VERSION
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+
+prompt = SystemMessage(content="You are a nice pirate")
+new_prompt = (
+    prompt + HumanMessage(content="hi") + AIMessage(content="what?") + "{input}"
+)
+
+new_prompt.format_messages(input="i said hi")
+
+Should Output an Object Like:
+`[SystemMessage(content='You are a nice pirate', additional_kwargs={}),
+ HumanMessage(content='hi', additional_kwargs={}, example=False),
+ AIMessage(content='what?', additional_kwargs={}, example=False),
+ HumanMessage(content='i said hi', additional_kwargs={}, example=False)]`
+ 
+ chain = LLMChain(llm=model, prompt=new_prompt)
+
+chain.run("i said hi")
+
+### Errors to handle list:
+#### GROQ Errors
+- calling api: groq.InternalServerError: Error code: 502 - {'error': {'type': 'internal_server_error', 'code': 'service_unavailable'}}   -> solution implement retries exponential and with max retry times and prepare fallback local lmstudio or ollama maybe... and trace to know when this happen
 
 
 

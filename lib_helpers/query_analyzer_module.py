@@ -3,9 +3,10 @@ Here we will put all function that will be used to analyze, decompose, rephrase 
 """
 import os
 import re
-from typing import Tuple
+from typing import Tuple, List
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+from prompts.prompts import llm_call_prompt
 
 
 load_dotenv()
@@ -34,7 +35,7 @@ def detect_content_type(query: str) -> Tuple:
   else:
     return 'text', query
 
-def llm_call(query: str, prompt_llm_call: list) -> str:
+def llm_call(query: str, prompt_llm_call: List[Tuple[str,str]]) -> str:
   messages=[
           (
             "system",
@@ -55,7 +56,7 @@ def llm_call(query: str, prompt_llm_call: list) -> str:
           (
             "human", query.strip(),
           )
-         ]
+         ].format({"query":query.strip()})
 
   llm_called = groq_llm_mixtral_7b.invoke(messages)
 

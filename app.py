@@ -1,8 +1,10 @@
 import os
+import time
 from typing import Annotated, Literal, TypedDict
 from langchain_core.messages import HumanMessage
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain.prompts import (
   PromptTemplate,
   ChatPromptTemplate,
@@ -16,7 +18,7 @@ from langgraph.graph import END, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode
 from dotenv import load_dotenv
 import psycopg2
-from typing import TypedDict, Dict, List, Any
+from typing import TypedDict, Dict, List, Any, Optional
 #### MODULES #####
 from prompts import prompts
 # USER QUERY ANALYSIS AND TRANSFORMATION
@@ -185,7 +187,22 @@ final_state["messages"][-1].content
  - then build all those mini tools
 
 """
+### HELPERS
+# to format prompts
+def dict_to_tuple(d: Dict[str, str]) -> Tuple[Tuple[str, str], ...]:
+    """
+    Transforms a dictionary into a tuple of key-value pairs.
 
+    Args:
+    d (Dict[str, str]): The dictionary to transform.
+
+    Returns:
+    Tuple[Tuple[str, str], ...]: A tuple containing the dictionary's key-value pairs.
+    """
+    return tuple(d.items())
+
+
+"""def analyze_user_query():"""
 ##### QUERY & EMBEDDINGS #####
 ## 1- IDENTIFY IF QUERY IS FOR A PFD OR A WEB PAGE
 # Main function to process the user query and return pandas dataframe
@@ -204,6 +221,16 @@ def process_query(query: str) -> None:
         return f"No PDF nor URL found in the query. Content: {content}"
     
     return df_final
+
+from query_analyzer_module, to get response object, maybe better than detect_content_type(query) other function from same library:
+{
+  'url': <url in user query make sure that it always has https. and get url from the query even if user omits the http>,
+  'pdf': <pdf full name or path in user query>,
+  'text': <if text only without any webpage url or pdf file .pdf path or file just put here the user query>,
+  'question': <if quesiton identified in user query rephrase it in an easy way to retrieve data from vector database search without the filename and in a good english grammatical way to ask question>
+}
+function to be improved as it should use a template to call llm and other utility functions and accept llm as parameter so that we can change it on the fly
+llm_call(query: str, prompt_llm_call: List[Tuple[str,str]])
 
 ## 2- STORE DOCUMENT DATA TO POSTGRESQL DATABASE
 # Function to store cleaned data in PostgreSQL
@@ -295,163 +322,78 @@ Langfuse can also be used here to store prompts that we will just call in the gr
 But we will first here create prompts in the conventional way before testing the langfuse way (to have the need of less dependencies and jsut use langchain and langgraph)
 """
 
+# create prompts format, we can pass in as many kwargs as wanted it will unfold and place it properly
+# we have two schema one for normal question/answer prompts and another for chat_prompts system/human/ai
 
-# create prompts format, we can pass in as many kwargs as wanted it will unfold and place it properly, make sure to know which imput_variables are matching your prompt template
-# **kwargs mean you can pass in as many: var1=...., var2=..., var3=.... etc...
+def call_chain(model: ChatGroq, prompt: PromptTemplate, prompt_input_vars: Optional[Dict], prompt_chat_input_vars: Optional[Dict]):
+  # only to concatenate all input vars for the system/human/ai chat
+  chat_input_vars_dict = {}
+  for k, v in prompt_chat_input_vars.items():
+    for key, value in v.items():
+      chat_input_vars_dict[key] = value
+  print("Chat input vars: ",  chat_input_vars_dict)
 
+  # default question/answer
+  if prompt and prompt_input_vars:
+    print("Input variables found: ", prompt_input_vars)
+    chain = ( prompt | model )
+    response = chain.invoke(prompt_input_vars)
+    print("Response: ", response, type(response))
+    return response.content.split("```")[1].strip("python").strip()
+    
+  # special for chat system/human/ai
+  elif prompt and prompt_chat_input_vars:
+    print("Chat input variables found: ", prompt_chat_input_vars)
+    chain = ( prompt | model )
+    response = chain.invoke(chat_input_vars_dict)
+    print("Response: ", response, type(response))
+    return response.content.split("```")[1].strip("python").strip()
 
-def prompt_creation(target_prompt: Dict[str, Any], **kwargs: Any) -> PromptTemplate:
-    """
-    Creates a PromptTemplate using the provided target_prompt dictionary and keyword arguments.
-    
-    Args:
-    target_prompt (dict): A dictionary containing the template and input variables.
-    **kwargs: Arbitrary keyword arguments to be formatted into the template.
-    
-    Returns:
-    PromptTemplate: The formatted prompt template.
-    """
-    input_variables = target_prompt.get("input_variables", [])
-    
-    prompt = PromptTemplate(
-        template=target_prompt["template"],
-        input_variables=input_variables
+  print("Chat input variables NOT found or missing prompt!")
+  chain = ( prompt | model )
+  response = chain.invoke(input={})
+  print("Response: ", response, type(response))
+  return response.content.split("```")[1].strip("python").strip()
+
+def make_normal_or_chat_prompt_chain_call(llm_client, prompt_input_variables_part: Dict, prompt_template_part: Optional[Dict], chat_prompt_template: Optional[Dict]):
+  
+  # default prompt question/answer
+  if prompt_template_part:
+    prompt = (
+      PromptTemplate.from_template(prompt_template_part)
     )
-    
-    formatted_template = prompt.format(**kwargs) if input_variables else target_prompt["template"]
-    
-    return PromptTemplate(
-        template=formatted_template,
-        input_variables=[]
-    )
-
-# here we don't use pydantic to precise what schema should be returned 
-# but we could create a pydantic class ineriting from `BaseModel` that would provide the schema 
-# with variables and their description of what they are used for in the schema output
-#class ResponseSchema(BaseModel):
-    #key1: str = Field(description=...)
-    #key2: int = Field(description=...)
-
-# using here *args if needed to add a AI prompt. Here **kwargs can be all the variables for all the types of prompts and the injection will pick the right ones
-def chat_prompt_creation(system_prompt: Dict[str, Any], human_prompt: Dict[str, Any], *args: Dict[str, Any], **kwargs: Any) -> ChatPromptTemplate:
-    """
-    Creates a chat prompt template using system, human, and optional AI message prompts.
-    
-    Args:
-    system_prompt (dict): The system message prompt template.
-    human_prompt (dict): The human message prompt template.
-    *args: Additional AI message prompts.
-    **kwargs: Variables to be injected into the prompt templates.
-    
-    Returns:
-    ChatPromptTemplate: The formatted chat prompt template.
-    """
-    ai_message_prompt_list = []
-  
-    # define system prompt and user prompt
-    formatted_system_prompt = prompt_creation(system_prompt, **kwargs)
-    formatted_human_prompt = prompt_creation(human_prompt, **kwargs)
-
-    # Ensure the formatted prompts are instances of PromptTemplate
-    if not isinstance(formatted_system_prompt, PromptTemplate):
-        raise ValueError("formatted_system_prompt is not an instance of PromptTemplate")
-    if not isinstance(formatted_human_prompt, PromptTemplate):
-        raise ValueError("formatted_human_prompt is not an instance of PromptTemplate")
-
-    system_message_prompt = SystemMessagePromptTemplate(prompt=formatted_system_prompt)
-    human_message_prompt = HumanMessagePromptTemplate(prompt=formatted_human_prompt)
-    print("system message prompt: ", system_message_prompt)
-    print("human message prompt: ", human_message_prompt)
-  
-    # can be used as example of answer saying "This is an example of answer..."
-    for arg in args:
-        formatted_ai_message_prompt = prompt_creation(arg, **kwargs)
-        if not isinstance(formatted_ai_message_prompt, PromptTemplate):
-            raise ValueError("formatted_ai_message_prompt is not an instance of PromptTemplate")
-        ai_message_prompt = AIMessagePromptTemplate(prompt=formatted_ai_message_prompt)
-        ai_message_prompt_list.append(ai_message_prompt)
-  
-    # instantiate the prompt for the chat
-    if ai_message_prompt_list:
-        chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt, *ai_message_prompt_list])
-    else:
-        chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
-  
-    return chat_prompt
-
-# call llm using the prompt. LLM can be adapted here by passing it as input parameter
-def invoke_chain(prompt_template: PromptTemplate|ChatPromptTemplate, llm: ChatGroq, parser: JsonOutputParser) -> Any:
-    """
-    Invokes a chain consisting of a prompt template, an LLM, and a parser to generate a response.
-    
-    Args:
-    prompt_template (PromptTemplate|ChatPromptTemplate): The template for the prompt.
-    llm (ChatGroq): The large language model to use.
-    parser (JsonOutputParser): The parser to use for processing the output.
-    
-    Returns:
-    Any: The parsed response from the chain.
-    """
-    # Combine the prompt template, LLM, and parser into a chain
-    chain_for_type_of_action = prompt_template | llm | parser
-
-    # Invoke the chain and get the response
-    response = chain_for_type_of_action.invoke()
-
- 
-    # Validate and return the response using the Pydantic model: this is if we had used Pydantic to enforce output schema
-    #validated_response = ResponseSchema(**response)
-    #return validated_response
-    
+    response = call_chain(llm_client, prompt, prompt_input_variables_part, {})
     return response
+  
+  # chat prompts question/answer system/human/ai
+  elif chat_prompt_template:
+    prompt = (
+      SystemMessage(content=chat_prompt_template["system"]["template"]) + HumanMessage(content=chat_prompt_template["human"]["template"]) + AIMessage(content=chat_prompt_template["ai"]["template"])
+    )
+    response = call_chain(llm_client, prompt, {}, {"system": chat_prompt_template["system"]["input_variables"], "human": chat_prompt_template["human"]["input_variables"], "ai": chat_prompt_template["ai"]["input_variables"]})
+    return response
+  return {'error': "An error occured while trying to create prompts. You must provide either: `prompt_template_part` with `prompt_input_variables_part` or `chat_prompt_template` - in combinaison with llm_client which is always needed." }
+
+# just to test
+from prompts.prompts import test_prompt_tokyo, test_prompt_siberia, test_prompt_monaco, test_prompt_dakar
+
+print("SIBERIA: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_siberia["input_variables"], test_prompt_siberia["template"], {}))
+time.sleep(0.5)
+print("TOKYO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_tokyo["input_variables"], test_prompt_tokyo["template"], {}))
+time.sleep(0.5)
+print("DAKAR: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_dakar))
+time.sleep(0.5)
+print("MONACO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_monaco))
 
 
 
 """
-1- import the right prompt and check its required input vars to add those as kwargs to the function
+1- import the right prompt template normal question/response or chat special system/human/aione
 2- use the template and the function argument to create the prompt
-3- use the invoke function to get an answer
+3- use make_normal_or_chat_prompt_chain_call(llm_client, prompt_input_variables_part: Dict, prompt_template_part: Optional[Dict], chat_prompt_template: Optional[Dict])
+4- use internet search tool if nothing is found or go to the internet search node
 """
 
-"""
-#1-
-"""
-
-"""
-# we pass variables using Dict[str,Any] buut we can also iterate through a List[Dict[str,Any]] by using `.format(**name_or_var_List[Dict[str,Any]])`
-# we call the module having all prompts and extract the one we need
-query_answer_retrieved_prompt: dict = prompts.prompt_query_answer_retrieved_llm_response_formatting_instruction
-
-"""
-#1-
-"""
-# Chat promtps system, human amd optionally AI
-system_prompt_<speciality_of_node_> : dict = prompts.system_prompt_<speciality_of_node_> 
-human_prompt_<human_need> : dict = prompts.human_prompt_<human_need>
-# can add some other for ai_prompt_<ai_speciality>
-
-
-
-# retrieved answer prompt to get an answer formatted correctly
-"""
-#2-
-"""
-final_prompt = prompt_creation(query_answer_retrieved_prompt, quer=..., answer=retrieved_data, example=...)
-"""
-#3-
-"""
-response = invoke_chain(final_prompt, groq_llm_mixtral_7b, JsonOutputParser)
-# Chat Prompting with system, human and AI would look like this:
-"""
-#2-
-"""
-chat_prompt = chat_prompt_creation(system_prompt_<speciality_of_node_>, human_prompt_<human_need>, ai_prompt_<ai_speciality>, query=..., answer=..., retrieved_answer=..., example=....)
-"""
-#3-
-"""
-response = invoke_chain(chat_prompt, groq_llm_mixtral_7b, JsonOutputParser)
-
-"""
 
 ###### CREATE WORKFLOW TO PLAN NODE AND EDGES NEEDS #######
 ## 7- CREATE WORKFLOW
