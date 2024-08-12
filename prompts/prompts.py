@@ -83,7 +83,7 @@ detect_content_type_prompt = {
         'text': <if text only without any webpage url or pdf file .pdf path or file just put here the user query>,
         'question': <if quesiton identified in user query rephrase it in an easy way to retrieve data from vector database search without the filename and in a good english grammatical way to ask question>
       }
-      Answer only with the schema in markdown between ```python ```.
+      Answer only with the schema in markdown between ```markdown ```.
       """, 
     "input_variables": {}
   },

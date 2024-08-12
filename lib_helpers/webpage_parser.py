@@ -9,8 +9,18 @@ from uuid import uuid4
 from dotenv import load_dotenv
 import os
 from langchain_groq import ChatGroq
+from lib_helpers.chunking_module import create_chunks_from_data
+from typing import Dict, Any, List, Optional
 
 load_dotenv()
+
+# Initialize the Groq LLM for summarization
+groq_llm_mixtral_7b = ChatGroq(
+    temperature=float(os.getenv("GROQ_TEMPERATURE")), 
+    groq_api_key=os.getenv("GROQ_API_KEY"), 
+    model_name=os.getenv("MODEL_MIXTRAL_7B"),
+    max_tokens=int(os.getenv("GROQ_MAX_TOKEN"))
+)
 
 # Connect to the PostgreSQL database
 def connect_db() -> psycopg2.extensions.connection:
@@ -42,75 +52,34 @@ def create_table_if_not_exists():
 create_table_if_not_exists()
 
 # Function to extract text and sections from a web page
-def web_page_to_sections(url):
+def scrape_website(url: str) -> Dict[str, Any]:
+    """"Will get the content of webpage and return a dictionary with keys `text`, `section`, `url`"""
     response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-    data = []
-    current_section = None
-    current_title = None
+    # Define how to find the title and the main content
+    title_tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']  # Modify this depending on the site structure
+    content_tags = ['p', 'li']  # Modify this depending on the site structure
 
-    for element in soup.find_all(['h1', 'h2', 'h3', 'p']):
-        if element.name in ['h1', 'h2', 'h3']:
-            current_title = element.get_text(strip=True)
-        elif element.name == 'p':
-            text = element.get_text(strip=True)
-            if text:
-                data.append({'text': text, 'section': current_title, 'url': url})
-    
-    return data
+    # Extract the page title
+    current_title = soup.title.string if soup.title else "No Title"
 
-# Parse the web page and create a DataFrame
-web_data = web_page_to_sections('https://example.com')
-df = pd.DataFrame(web_data)
+    # Extract all text content
+    text = []
+    for tag in content_tags:
+        elements = soup.find_all(tag)
+        for element in elements:
+            text.append(element.get_text())
 
-# Initialize the Groq LLM for summarization
-groq_llm_mixtral_7b = ChatGroq(
-    temperature=float(os.getenv("GROQ_TEMPERATURE")), 
-    groq_api_key=os.getenv("GROQ_API_KEY"), 
-    model_name=os.getenv("MODEL_MIXTRAL_7B"),
-    max_tokens=int(os.getenv("GROQ_MAX_TOKEN"))
-)
+    # Combine all the text
+    text = " ".join(text)
 
-# Function to summarize text using Groq LLM
-def summarize_text(llm, row, maximum):
-    # Add length constraints directly to the prompt
-    prompt_text = f"Please summarize the following text in no more than {maximum} characters:\n\n{row['text']}. Make sure  your answering in markdown format putting the answer between ```python ```."
-    
-    response = llm.invoke(prompt_text)
-    print("LLM RESPONSE: ", response)
-    summary = response.content.split("```")[1].strip("python").strip()
-    #summary = response['choices'][0]['text'].strip()
-    print("Summary: ", summary)
-    return summary
+    # Prepare the result as a dictionary
+    result = {
+        'text': text.strip(),
+        'section': current_title.strip(),
+        'url': url
+    }
 
-def generate_title(llm, row, maximum):
-    prompt_text = f"Please create a title in no more than {maximum} characters for:\n\n{row['section']} - {row['text']}.Make sure  your answering in markdown format putting the answer between ```python ```."
-    response = llm.invoke(prompt_text)
-    title = response.content.split("```")[1].strip("python").strip()
-    return title
+    return result
 
-def get_final_df(llm: ChatGroq, webpage_url: str, maximum_content_length: int, maximum_title_length: int):
-  # parse webpage content
-  webpage_data = web_page_to_sections(webpage_url)
-  # put content in a pandas dataframe
-  df = pd.DataFrame(webpage_data)
-  print("DF: ", df)
-
-  df['summary'] = df.apply(lambda row: summarize_text(llm, row, maximum_content_length), axis=1) # here use llm to make the summary
-
-  # Generate titles using section and text
-  df['title'] = df.apply(lambda row: generate_title(llm, row, maximum_title_length), axis=1)
-
-  # Generate metadata and add UUID and retrieved fields
-  df['id'] = [str(uuid4()) for _ in range(len(df))]
-  df['doc_name'] = df['url']
-  df['content'] = df['summary']
-  df['retrieved'] = False
-
-  # Select only the necessary columns
-  df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
-  print("Df Final from library: ", df_final, type(df_final))
-  with open("test_url_parser_df_output.csv", "w", encoding="utf-8") as f:
-    df_final.to_csv(f, index=False)
-  return df_final

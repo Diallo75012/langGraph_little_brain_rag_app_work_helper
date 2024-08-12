@@ -7,6 +7,7 @@ from typing import Tuple, List
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from prompts.prompts import llm_call_prompt
+from typing import Dict, Any, List, Optional
 
 
 load_dotenv()
@@ -15,7 +16,7 @@ groq_llm_mixtral_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")),
 max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 
 # Utility function to determine if the query contains a PDF or URL
-def detect_content_type(llm: ChatGroq, query: str, prompt: Dict):
+def detect_content_type(llm: ChatGroq, query: str, prompt: Dict) -> str:
   """
   Utility function to determine if the query contains a PDF or URL and extract URL, PDF, Text, Question in s tructured way (JSON like).
 
@@ -34,6 +35,6 @@ def detect_content_type(llm: ChatGroq, query: str, prompt: Dict):
 
   #print("LLM call answer: ", llm_called.content)
 
-  llm_called_answer = llm_called.content.split("```")[1].strip("python").strip()
+  llm_called_answer = llm_called.content.split("```")[1].strip("markdown").strip()
   return llm_called_answer
 

@@ -11,10 +11,13 @@ import json
 from dotenv import load_dotenv
 from langchain.docstore.document import Document
 from typing import Dict, List, Any
+import requests
+from bs4 import BeautifulSoup
 
 
 load_dotenv()
 
+### Create Chunks From Database Data
 # function that have th elogic to create chunks from database content and will make sure an overlapping of one row being last in one chunk and firt in the next chunk
 def create_chunks(rows: List[Dict[str, Any]], chunk_size: int) -> List[List[Dict[str,Any]]]:
     """Create chunks with overlapping content from the fetched rows."""
@@ -48,4 +51,62 @@ def create_chunks(rows: List[Dict[str, Any]], chunk_size: int) -> List[List[Dict
         chunks.append(chunk)
 
     return chunks
+
+
+
+
+#### Create chunks from webpage content
+# chunk `text` key and preserve `section` (that will be created later on with a summary title of the `text` and `section`) and `url`
+def chunk_text_data(data: Dict[str, Any], chunk_size: int) -> List[Dict[str, Any]]:
+    """Chunks the 'text' content while keeping 'section' and 'url' intact."""
+    
+    print("DATA: ", data, type(data))
+
+    # Initialize variables
+    chunks = []
+    text = data['text']
+    section = data['section']
+    url = data['url']
+
+    # Split the text into smaller chunks
+    words = text.split()
+    current_chunk = []
+    current_size = 0
+
+    for word in words:
+        word_length = len(word) + 1  # including the space
+
+        # If adding the next word exceeds the chunk size, finalize the current chunk
+        if current_size + word_length > chunk_size:
+            chunks.append({
+                'text': ' '.join(current_chunk),
+                'section': section,
+                'url': url
+            })
+            current_chunk = []
+            current_size = 0
+
+        # Add the word to the current chunk
+        current_chunk.append(word)
+        current_size += word_length
+
+    # Add the last chunk if there's any remaining content
+    if current_chunk:
+        chunks.append({
+            'text': ' '.join(current_chunk),
+            'section': section,
+            'url': url
+        })
+
+    return chunks
+
+# put here data scrapped from webpage `{'text': text.strip(),'section': current_title.strip(),'url': url}` and choose chunk size
+def create_chunks_from_data(data: List[Dict[str, Any]], chunk_size: int) -> List[Dict[str, Any]]:
+    """Creates chunks from the entire dataset."""
+    all_chunks = []
+    for row in data:
+        chunks = chunk_text_data(row, chunk_size)
+        all_chunks.extend(chunks)
+
+    return all_chunks
 

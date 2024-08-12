@@ -8,8 +8,18 @@ from uuid import uuid4
 from dotenv import load_dotenv
 import os
 from langchain_groq import ChatGroq
+from typing import Dict, Any, List, Optional
+
 
 load_dotenv()
+
+# Initialize the Groq LLM for summarization
+groq_llm_mixtral_7b = ChatGroq(
+    temperature=float(os.getenv("GROQ_TEMPERATURE")), 
+    groq_api_key=os.getenv("GROQ_API_KEY"), 
+    model_name=os.getenv("MODEL_MIXTRAL_7B"),
+    max_tokens=int(os.getenv("GROQ_MAX_TOKEN"))
+)
 
 # Connect to the PostgreSQL database
 def connect_db() -> psycopg2.extensions.connection:
@@ -99,55 +109,4 @@ def pdf_to_sections(pdf_path) -> list:
 
     print("Section Buffer: ", section_buffer)
     return data
-
-# Initialize the Groq LLM for summarization
-groq_llm_mixtral_7b = ChatGroq(
-    temperature=float(os.getenv("GROQ_TEMPERATURE")), 
-    groq_api_key=os.getenv("GROQ_API_KEY"), 
-    model_name=os.getenv("MODEL_MIXTRAL_7B"),
-    max_tokens=int(os.getenv("GROQ_MAX_TOKEN"))
-)
-
-# Function to summarize text using Groq LLM
-def summarize_text(llm, row, maximum):
-    # Add length constraints directly to the prompt
-    prompt_text = f"Please summarize the following text in no more than {maximum} characters:\n\n{row['text']}. Answer only with the schema in markdown between ```python ```"
-    
-    response = llm.invoke(prompt_text)
-    summary = response.content.split("```")[1].strip("python").strip()
-    #summary = response['choices'][0]['text'].strip()
-    print("Summary: ", summary)
-    return summary
-
-def generate_title(llm, row, maximum):
-    prompt_text = f"Please create a title in no more than {maximum} characters for:\n\n{row['section']} - {row['text']}.\nAnswer only with the schema in markdown between ```python ```"
-    response = llm.invoke(prompt_text)
-    title = response.content.split("```")[1].strip("python").strip()
-    return title
-
-def get_final_df(llm: ChatGroq, pdf_file_name_path: str, maximum_content_length: int, maximum_title_length: int):
-  # Parse the PDF and create a DataFrame
-  pdf_data = pdf_to_sections(pdf_file_name_path)
-  print("PDF DATA: ", pdf_data)
-  df = pd.DataFrame(pdf_data)
-  print("DF: ", df)
-
-  # Apply summarization
-  df['summary'] = df.apply(lambda row: summarize_text(llm, row, maximum_content_length), axis=1) # here use llm to make the summary
-
-  # Generate titles using section and text
-  df['title'] = df.apply(lambda row: generate_title(llm, row, maximum_title_length), axis=1)
-
-  # Generate metadata and add UUID and retrieved fields
-  df['id'] = [str(uuid4()) for _ in range(len(df))]
-  df['doc_name'] = df['document'].apply(lambda x: os.path.basename(x)) # or just use function var `pdf_file_name`
-  df['content'] = df['summary']
-  df['retrieved'] = False
-
-  # Select only the necessary columns
-  df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
-  print("Df Final from library: ", df_final, type(df_final))
-  with open("test_pdf_parser_df_output.csv", "w", encoding="utf-8") as f:
-    df_final.to_csv(f, index=False)
-  return df_final
 

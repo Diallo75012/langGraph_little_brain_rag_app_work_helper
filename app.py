@@ -222,21 +222,146 @@ def string_to_dict(string: str) -> Dict[str, Any]:
     except (SyntaxError, ValueError) as e:
         raise ValueError(f"Error converting string to dictionary: {e}")
 
+# if needed this will tell if the string is url or pdf
+def is_url_or_pdf(input_string: str) -> str:
+    """
+    Checks if the given string is a URL or a PDF document.
+
+    Args:
+    input_string (str): The input string to check.
+
+    Returns:
+    str: "url" if the string is a URL, "pdf" if it's a PDF document, and "none" if it's neither.
+    """
+    try:
+        # Regular expression pattern for URLs
+        url_pattern = re.compile(
+            r'^(https?:\/\/)?'                # http:// or https:// (optional)
+            r'([a-z0-9]+[.-])*[a-z0-9]+\.[a-z]{2,6}'  # domain name
+            r'(:[0-9]{1,5})?'                 # port (optional)
+            r'(\/.*)?$',                      # path (optional)
+            re.IGNORECASE
+        )
+
+        # Check if it's a URL
+        if url_pattern.match(input_string):
+            print("It was an URL!")
+            return "url"
+
+        # Check if it's a .pdf document URL or file path
+        if input_string.lower().endswith(".pdf"):
+            print("It was a PDF!")
+            return "pdf"
+
+        # Neither URL nor PDF
+        return "none"
+
+    except Exception as e:
+        # Catch any unexpected errors and return "none"
+        print(f"An error occurred: {e}")
+        return "none"
+
+# Function to summarize text using Groq LLM
+def summarize_text(llm, row, maximum):
+    # Add length constraints directly to the prompt
+    prompt_text = f"Answer putting text in markdown tags ```markdown ``` using no more than {maximum} characters to summarize this: {row['text']}."
+    response = llm.invoke(prompt_text)
+    print("LLM RESPONSE: ", response)
+    print("response content: ", response.content, "len response content: ", len(response.content))
+    try:
+      summary = response.content.split("```")[1].strip("markdown").strip()
+      #summary = response['choices'][0]['text'].strip()
+      print("Summary: ", summary, "len summary: ", len(summary))
+    except IndexError as e:
+      if len(response.content) != 0:
+        summary = response.content
+    return summary
+
+def generate_title(llm, row, maximum):
+    prompt_text = f"Please create a title in no more than {maximum} characters for: {row['section']} - {row['text']}. Make sure  your answering using in markdown format. Make sure that your answer is contained between markdown tags like in this example: ```markdown'title of the text here' ```."
+    response = llm.invoke(prompt_text)
+    print("LLM RESPONSE: ", response)
+    print("response content: ", response.content, "len response content: ", len(response.content))
+    try:
+      title = response.content.split("```")[1].strip("markdown").strip()
+      print("title: ", title, "len title: ", len(title))
+    except IndexError as e:
+      if len(response.content) != 0:
+        title = response.content
+    return title
+
+def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int]):
+  
+  if is_url:
+    # parse webpage content `dict`
+    webpage_data = scrape_website(url_or_doc_path)
+    print("Webpage_data", webpage_data)
+    # create the chunks. make sure it is a list of data passed in [dict]
+    chunks =  create_chunks_from_data([webpage_data], chunk_size)
+    # put content in a pandas dataframe. make sure it is a list of dict `[dict]` and not a 'dict'. chunks returned is a list[dict]
+    df = pd.DataFrame(chunks)
+    print("DF: ", df.head(10))
+  else:
+    # Parse the PDF and create a DataFrame
+    pdf_data = pdf_to_sections(url_or_doc_path)
+    print("PDF DATA: ", pdf_data)
+    df = pd.DataFrame(pdf_data)
+    print("DF: ", df.head[10])
+
+  ## CREATE FINAL DATAFRAME
+  
+  # generate summary of content text, we send row and will fetch there row[text]
+  df['summary'] = df.apply(lambda row: summarize_text(llm, row, maximum_content_length), axis=1) # here use llm to make the summary
+
+  # Generate titles using section and text (we send the row and we will fetch there row[text], row[section])
+  df['title'] = df.apply(lambda row: generate_title(llm, row, maximum_title_length), axis=1)
+
+  # Generate metadata and add UUID and retrieved fields
+  df['id'] = [str(uuid4()) for _ in range(len(df))]
+  if is_url:
+    df['doc_name'] = df['url']
+  else:
+    df['doc_name'] = df['document']
+  df['content'] = df['summary']
+  df['retrieved'] = False
+
+  # Select only the necessary columns
+  df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
+  print("Df Final from library: ", df_final, type(df_final))
+  
+  # create csv files as log of what have been produced for demonstration and human verification to later improve prompts or workflow quality data extraction
+  if is_url:
+    with open("test_url_parser_df_output.csv", "w", encoding="utf-8") as f:
+      df_final.to_csv(f, index=False)
+  else:
+    with open("test_pdf_parser_df_output.csv", "w", encoding="utf-8") as f:
+      df_final.to_csv(f, index=False)
+  return df_final
+
+
+
 """def analyze_user_query():"""
+
+
+# ********************* ----------------------------------------------- *************************************
 ##### QUERY & EMBEDDINGS #####
+
 ## 1- IDENTIFY IF QUERY IS FOR A PFD OR A WEB PAGE
-# Main function to process the user query and return pandas dataframe and the user query dictionary structured by llm
-def process_query(llm: ChatGroq, query: str, prompt: Dict) -> Tuple:
+# Main function to process the user query and return pandas dataframe and the user query dictionary structured by llm. here df_final will have chunks already done! cool!
+def process_query(llm: ChatGroq, query: str, prompt: Dict, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int]) -> Tuple:
     # use of detect_content_type from `query_analyzer_module`
-    content_dict = detect_content_type(llm, query, prompt)
+    content_str = detect_content_type(llm, query, prompt)
+    content_dict = string_to_dict(content_str)
     # print content to see how it looks like, will it getthe filename if pdf or the full correct url if url...
-    print("content: ", content)
-    if content_dict["pdf"] == "pdf":
-        # functions from `lib_helpers.pdf_parser`
-        df_final = get_final_df(content)
-    elif content_dict["url"] == "url":
+    print("content_dict: ", content_dict)
+    if content_dict["pdf"]:
+        is_url = False
+        # functions from `lib_helpers.pdf_parser`(for pdf we increase a bit the content lenght accepted and the chunk size)
+        df_final = get_final_df(llm, is_url, content_dict["pdf"].strip(), maximum_content_length + 200, maximum_title_length, chunk_size + 150)
+    elif content_dict["url"]:
+        is_url = True
         # functions from `lib_helpers.webpage_parser`
-        df_final = get_df_final(content)
+        df_final = get_final_df(llm, is_url, content_dict["url"].strip(), maximum_content_length, maximum_title_length, chunk_size)
     else:
         return f"No PDF nor URL found in the query. Content: {content_dict)"
     
@@ -288,7 +413,12 @@ def custom_chunk_and_embed_to_vectordb(chunk_size: int, COLLECTION_NAME: str, CO
   return {"success": "database data fully embedded to vectordb"}
     
 
+
+
+
+# ********************* ----------------------------------------------- *************************************
 ###### QUERY AND RETRIEVAL ######
+
 ## 4- FETCH QUERY FROM REDIS CACHE, IF NOT FOUND ONLY THEN DO A VECTOR RETRIEVAL FROM VECTORDB
 
 def query_redis_cache_then_vecotrdb_if_no_cache(query: str, score: float) -> List[Dict[str,Any]] | str:

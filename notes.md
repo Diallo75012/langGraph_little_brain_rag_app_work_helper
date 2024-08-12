@@ -1178,3 +1178,8 @@ Direct call is better as no issues with formatting of input, LLM understands mor
   ]
 ```
 
+#### Next
+- change all ```python ``` by ```markdown ``` in prompts as the stupid llm sometimes interpret the ```python ```` as being creation of python code...
+- see if padf_parser shouldn't be simplified and just use same process as webpage parser and get all text and then chunk it and then summarize it... not sure yet as pdf parser that we have take into consideration tables and more ... we keep it like that for the moment
+- test this function: process_query form app.py and make all necessary imports to app.py
+- export prompts to the prompt file and import those to be used in the functions that summarize text and make tiles 
