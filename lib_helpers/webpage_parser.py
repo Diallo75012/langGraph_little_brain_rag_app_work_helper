@@ -73,23 +73,44 @@ groq_llm_mixtral_7b = ChatGroq(
 )
 
 # Function to summarize text using Groq LLM
-def summarize_text(row):
-    response = groq_llm_mixtral_7b(row['text'], max_length=50, min_length=25, do_sample=False)
-    return response['choices'][0]['text'].strip()
+def summarize_text(llm, row, maximum):
+    # Add length constraints directly to the prompt
+    prompt_text = f"Please summarize the following text in no more than {maximum} characters:\n\n{row['text']}. Make sure  your answering in markdown format putting the answer between ```python ```."
+    
+    response = llm.invoke(prompt_text)
+    print("LLM RESPONSE: ", response)
+    summary = response.content.split("```")[1].strip("python").strip()
+    #summary = response['choices'][0]['text'].strip()
+    print("Summary: ", summary)
+    return summary
 
-def get_df_final(webpage_url: str):
-  # Apply summarization
-  df['summary'] = df.apply(summarize_text, axis=1)
+def generate_title(llm, row, maximum):
+    prompt_text = f"Please create a title in no more than {maximum} characters for:\n\n{row['section']} - {row['text']}.Make sure  your answering in markdown format putting the answer between ```python ```."
+    response = llm.invoke(prompt_text)
+    title = response.content.split("```")[1].strip("python").strip()
+    return title
+
+def get_final_df(llm: ChatGroq, webpage_url: str, maximum_content_length: int, maximum_title_length: int):
+  # parse webpage content
+  webpage_data = web_page_to_sections(webpage_url)
+  # put content in a pandas dataframe
+  df = pd.DataFrame(webpage_data)
+  print("DF: ", df)
+
+  df['summary'] = df.apply(lambda row: summarize_text(llm, row, maximum_content_length), axis=1) # here use llm to make the summary
+
+  # Generate titles using section and text
+  df['title'] = df.apply(lambda row: generate_title(llm, row, maximum_title_length), axis=1)
 
   # Generate metadata and add UUID and retrieved fields
   df['id'] = [str(uuid4()) for _ in range(len(df))]
-  df['doc_name'] = df['url'].apply(lambda x: x)
-  df['title'] = df['section']
+  df['doc_name'] = df['url']
   df['content'] = df['summary']
   df['retrieved'] = False
 
   # Select only the necessary columns
   df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
+  print("Df Final from library: ", df_final, type(df_final))
+  with open("test_url_parser_df_output.csv", "w", encoding="utf-8") as f:
+    df_final.to_csv(f, index=False)
   return df_final
-
-

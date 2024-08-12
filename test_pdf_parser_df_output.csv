@@ -1,0 +1,51 @@
+id,doc_name,title,content,retrieved
+573892ad-fae2-4fbb-9fb9-f36cfc68c170,feel_temperature.pdf,"""Unraveling Temperature Sensation Mechanisms""","1. Temperature sensation involves cellular and molecular mechanisms.
+2. Sensing temperature is not just about kinetic energy of molecules.
+3. When you touch something cold, receptors in your skin sense the temperature change.
+4. This information is then sent to the brain through nerves as electrical signals.
+5. The brain interprets these signals as ""cold"".",False
+c678f3d1-fdbf-4d43-b836-d814268263de,feel_temperature.pdf,"""Demystifying ld?""","- DNA is double-stranded, with complementary bases (A-T, C-G)
+- Transcription creates mRNA from DNA template
+- mRNA has codons (3-letter sequences) that specify amino acids
+- Translation uses mRNA codons to build polypeptide chains
+- Folding of polypeptide chains creates functional proteins",False
+d080b56d-f327-4e76-b18c-f3ceaf5ac3eb,feel_temperature.pdf,"""Decoding Thermal Energy into Electrical Signals""","- Challenge: Converting thermal/kinetic energy to electrical signals for the brain
+- Role of receptors: Massive in signal travel",False
+2fef0b95-5da7-4fda-b78f-869e80fb2c1c,feel_temperature.pdf,"""Thermoreceptors in Dermis: Free Nerve Endings""","Thermoreceptors in skin:
+- Free nerve endings (FNE) in dermis
+- Ganglions (receive info from stimuli) in mid-epidermis, no membrane
+- 2 types: cold receptors, warm receptors
+- Concentration varies throughout body, e.g., ears, face have more cold receptors",False
+7541c549-1652-4b95-aa5d-81f6aa855d36,feel_temperature.pdf,"""FNE Thermoreceptors & Neurotransmission""","1. Neurotransmission: Signal strength depends on neuron firing frequency.
+2. Thermoreceptors detect temperatures of substances/objects, usually at room temperature (normal firing rates).
+3. Cold or hot stimuli change the firing rate of corresponding thermoreceptors.",False
+b41dda05-8e2e-40ac-be71-03eebf93a0a3,feel_temperature.pdf,"""Neural Responses to Temperature Stimuli""","Temperature Range | Cold Receptor Firing | Warm Receptor Firing | FNE Activation
+-----------------|---------------------|---------------------|----------------
+< 5°C            | Increase            | Decrease            | Cold FNEs
+30-45°C         | Decrease            | Increase            | Warm FNEs
+> 45°C          | Decrease            | Increase            | Nociceptors + Warm FNEs (pain)",False
+c3d97047-333e-4dca-999b-f3d9de7a4432,feel_temperature.pdf,"""Ion Channels: Exploring Burning Sensations""","Burning_sensation = {
+    ""Causes"": [""nerve irritation/damage"", ""injury"", ""infection"", ""autoimmune conditions"", 
+               ""skin conditions"", ""medication side effect""]
+}",False
+951c0edd-e8a8-4301-ba12-2ce22929ad92,feel_temperature.pdf,"TRP Ion Channels Sensitive to Temperature & Chemical Heat Sources
+-----------------------------------------------------------------
+
+- TRPV1 (""warm"" receptor)
+  - Activated by capsaicin (chili pepper)
+  - Influx of sodium and calcium into nerve cells
+  - Initiates ""on fire"" sensation
+
+- TRPM8
+  - Conducts messages about cold stimuli
+  - Activated by cooling agents like methanol","TRP ion channels
+    |
+Temperature/chemical heat sources
+    |
+Activate TRP ion channels
+    |
+Influx of sodium and calcium into nerve cells
+    |
+Firing of associated nerves
+    |
+Signaling to the brain",False

@@ -43,10 +43,10 @@ create_table_if_not_exists()
 # Function to extract text and sections from a PDF
 def pdf_to_sections(pdf_path) -> list:
     with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfFileReader(file)
+        reader = PyPDF2.PdfReader(file)
         text = ""
-        for page in range(reader.numPages):
-            text += reader.getPage(page).extract_text()
+        for page in range(len(reader.pages)):
+            text += reader.pages[page].extract_text()
     
     lines = text.split('\n')
     data = []
@@ -63,12 +63,14 @@ def pdf_to_sections(pdf_path) -> list:
         return bool(re.match(r'^\|.*\|$', line))
 
     for line in lines:
+        print("Line: ", line)
         line = line.strip()
         if not line:
             continue
 
         # Check for Titles, Headings, Subheadings, etc.
         if is_title(line):
+            print("Line is title: ", line)
             if section_buffer:
                 data.append({
                     'text': ' '.join(section_buffer),
@@ -78,10 +80,13 @@ def pdf_to_sections(pdf_path) -> list:
                 section_buffer = []
             current_section = line
         elif is_bullet_point(line):
+            print("Is bullet point: ", line)
             section_buffer.append(f"Bullet Point: {line}")
         elif is_table_line(line):
+            print("Is table: ", line)
             section_buffer.append(f"Table Row: {line}")
         else:
+            print("Is just a line", line)
             section_buffer.append(line)
     
     # Add any remaining buffer to data
@@ -92,6 +97,7 @@ def pdf_to_sections(pdf_path) -> list:
             'document': pdf_path
         })
 
+    print("Section Buffer: ", section_buffer)
     return data
 
 # Initialize the Groq LLM for summarization
@@ -103,26 +109,45 @@ groq_llm_mixtral_7b = ChatGroq(
 )
 
 # Function to summarize text using Groq LLM
-def summarize_text(row):
-    response = groq_llm_mixtral_7b(row['text'], max_length=50, min_length=25, do_sample=False)
-    return response['choices'][0]['text'].strip()
+def summarize_text(llm, row, maximum):
+    # Add length constraints directly to the prompt
+    prompt_text = f"Please summarize the following text in no more than {maximum} characters:\n\n{row['text']}. Answer only with the schema in markdown between ```python ```"
+    
+    response = llm.invoke(prompt_text)
+    summary = response.content.split("```")[1].strip("python").strip()
+    #summary = response['choices'][0]['text'].strip()
+    print("Summary: ", summary)
+    return summary
 
-def get_final_df(pdf_file_name: str):
+def generate_title(llm, row, maximum):
+    prompt_text = f"Please create a title in no more than {maximum} characters for:\n\n{row['section']} - {row['text']}.\nAnswer only with the schema in markdown between ```python ```"
+    response = llm.invoke(prompt_text)
+    title = response.content.split("```")[1].strip("python").strip()
+    return title
+
+def get_final_df(llm: ChatGroq, pdf_file_name_path: str, maximum_content_length: int, maximum_title_length: int):
   # Parse the PDF and create a DataFrame
-  pdf_data = pdf_to_sections(pdf_file_name)
+  pdf_data = pdf_to_sections(pdf_file_name_path)
+  print("PDF DATA: ", pdf_data)
   df = pd.DataFrame(pdf_data)
+  print("DF: ", df)
 
   # Apply summarization
-  df['summary'] = df.apply(summarize_text, axis=1) # here use llm to make the summary
+  df['summary'] = df.apply(lambda row: summarize_text(llm, row, maximum_content_length), axis=1) # here use llm to make the summary
+
+  # Generate titles using section and text
+  df['title'] = df.apply(lambda row: generate_title(llm, row, maximum_title_length), axis=1)
 
   # Generate metadata and add UUID and retrieved fields
   df['id'] = [str(uuid4()) for _ in range(len(df))]
   df['doc_name'] = df['document'].apply(lambda x: os.path.basename(x)) # or just use function var `pdf_file_name`
-  df['title'] = df['section']
   df['content'] = df['summary']
   df['retrieved'] = False
 
   # Select only the necessary columns
   df_final = df[['id', 'doc_name', 'title', 'content', 'retrieved']]
+  print("Df Final from library: ", df_final, type(df_final))
+  with open("test_pdf_parser_df_output.csv", "w", encoding="utf-8") as f:
+    df_final.to_csv(f, index=False)
   return df_final
 

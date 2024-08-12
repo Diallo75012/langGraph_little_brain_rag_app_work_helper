@@ -1092,9 +1092,89 @@ chain.run("i said hi")
 #### GROQ Errors
 - calling api: groq.InternalServerError: Error code: 502 - {'error': {'type': 'internal_server_error', 'code': 'service_unavailable'}}   -> solution implement retries exponential and with max retry times and prepare fallback local lmstudio or ollama maybe... and trace to know when this happen
 
+#### LLM calls Chaining vs direct call
+Direct call is better as no issues with formatting of input, LLM understands more what to do.
+- for the query:
+```bash
+           "system",
+             """
+              - Identify if the user query have a .pdf file in it, or an url, or just text, also if there is any clear question to rephrase it in a easy way for an llm to be able to retrieve it easily in a vector db. 
+              - If non of those found or any of those just put an empty string as value in the corresponding key in the response schema.
+              - User might not clearly write the url if any. It could be identified when having this patterm: `<docmain_name>.<TLD: top level domain>`. Make sure to analyze query thouroughly to not miss any url.
+              - Put your answer in this schema:
+                {
+                  'url': <url in user query make sure that it always has https. and get url from the query even if user omits the http>,
+                  'pdf': <pdf full name or path in user query>,
+                  'text': <if text only without any webpage url or pdf file .pdf path or file just put here the user query>,
+                  'question': <if quesiton identified in user query rephrase it in an easy way to retrieve data from vector database search without the filename and in a good english grammatical way to ask question>
+                }
+              Answer only with the schema in markdown between ```python ```.
+             """,
+             "human": "I have been in the ecommerce site chikarahouses.com and want to know if they have nice product for my Japanese garden"
+```
+- chaining and then invoke returns:
+```bash
+{
+    'url': 'https' + user_query.split('://')[-1] if any(x in user_query for x in ['http', 'www']) else '',
+    'pdf': user_query.split('.pdf')[-2] if '.pdf' in user_query else '',
+    'text': user_query if not ('http' in user_query or '.pdf' in user_query) else user_query.split('.pdf')[0] if '.pdf' in user_query else user_query.split('/')[-1],
+    'question': re.sub(r'[\[\]\(\)\{\}\|@\\/:;><\']+', ' ', user_query.strip()).strip() if any(x in user_query for x in ['how', 'what', 'where', 'when', 'who', 'which', 'why', 'is', 'are', 'does', 'do', 'did', 'was', 'were', 'has', 'have', 'had']) else ''
+}
+```
+- Direct call retuns:
+```bash
+{
+  'url': 'https://chikarahouses.com',
+  'pdf': '',
+  'text': 'I have been in the ecommerce site chikarahouses com and want to know if they have nice product for my Japanese garden',
+  'question': 'Do they have nice products for a Japanese garden at Chikara Houses?'
+}
+```
 
+##### Structure of document data when pdf content is parsed
+- function : `+pdf_to_sections`
+```code
 
-
-
-
+ {
+  'text': 'Exploring the cellular and molecular mechanisms of temperature sensation. One of my favourite things to learn in high school chemistry was how temperature workedâ \\200\\224the average kinetic energy of substances being responsible for how hot or cold we m ight feel something to be. This was simple enough. Fast molecules that bump a lot = hotter. Slow molecules that donâ\\200\\231t bump as often = colder. But that doesnâ\\200\\231t exactly explain how our brain can sense and relay information about the temperature of a substance . When you pick up an ice cube, how does your brain know what you’re touching is cold? How do we turn that measure of kinetic energy into signals that we can regularly identify as co', 
+  'section': 'Feb 22, 2024', 
+  'document': './doc/feel_temperature.pdf'
+  }, 
+  {
+   'text': 'Thatâ\\200\\231s what Iâ\\200\\231m aiming to explain today, and having taken a course in cellu lar and molecular biology, this has only just started to make sense to me.', 
+   'section': 'ld?', 
+   'document': './doc/feel_temperature.pdf'
+   }, 
+  {
+   'text': 'The main challenge here is figuring out how thermal and kinetic energy is converted into el ectrical signals that can inform the brain of the temperature of a substance. When it comes to receiving or transmitting any sort of signals, it’s a safe assumption that receptors of some sort play a massive role in the travel of information. Thatâ\\200\\231s no different he', 
+   'section': 'Thermoreceptors', 
+   'document': './doc/feel_temperature.pdf'
+   }, 
+   {
+    'text': 'A simplified diagram of thermoreceptors in the dermis (layer of skin) A simplified diagram of thermoreceptors in the dermis (layer of skin) | Source Thermoreceptors are free nerve endings (FNE), which extend until the mid-epidermis, or the outermost layer of our skin. The ganglionsâ\\200\\224the structures responsible for receiving information from extracellular stimuliâ\\200\\224are not enclosed within a membrane, which a llows them to detect various physical stimuli through interactions involving our skin. Additionally, we have 2 types of thermoreceptors, cold and warm receptors, that can be vari ed in concentration throughout the body. Iâ\\200\\231m sure youâ\\200\\231ve noticed that your ears and face get excessively cold in the winter, thatâ\\200\\231s due to a greater presence', 
+     'section': 'Introducing, the thermoreceptor!', 
+     'document': './doc/feel_temperature.pdf'
+    }, 
+   {
+    'text': 'To understand how these FNE thermoreceptors work, it is important to first understand a lit tle bit about neurotransmission. The strength of a signal processed by the brain is depende nt on the frequency of a neuronâ\\200\\231s firing. Of course, we are always interacting with substances and objects, which all have surface temperatures that our thermoreceptors detec t. However, these tend to be at room temperature, corresponding to normal firing rates. Int eractions with cold or hot stimuli change the firing rate of their corresponding thermorece', 
+     'section': 'of cold receptors in those areas.', 
+     'document': './doc/feel_temperature.pdf'
+    }, 
+    {
+     'text': 'Touching something with a temperature between around 5â\\200\\22330Â°C will increase cold rec eptor firing and decrease warm receptor firing. Accordingly, stimuli of temperature between 30â\\200\\22345Â°C will increase warm receptor firing and decrease cold receptor firing. Thi s changing pattern of neural impulses by FNEs is what indicates to your brain (and therefor e, you) that youâ\\200\\231re touching something cold or hot. In fact, when you touch something hot enough to hurt, another type of FNEs called nocicepto rs are activated, which signals to your brain that something youâ\\200\\231re touching is cau sing you pain. That, coupled with a high warm receptor firing rate, makes you aware that yo u might burn yourself if you keep in contact with the given substance.feel_temperature.txt Thu May 09 19:02:26 2024 2', 
+      'section': 'ptors.', 
+      'document': './doc/feel_temperature.pdf'
+     }, 
+     {
+      'text': 'So, weâ\\200\\231ve covered how we feel one type of hot, but what about that burning feeling', 
+      'section': 'Ion Channels', 
+      'document': './doc/feel_temperature.pdf'
+     }, 
+     {
+      'text': 'A diagram of TRP ion channels sensitive to temperature and chemical heat sources A diagram of TRP ion channels sensitive to temperature and chemical heat sources | Source The heat of a chilli pepper is slightly different from what weâ\\200\\231ve talked about befo re. These plants contain capsaicin, a chemical agent that acts on interior surfaces in your mouth (and tongue, especially) to make it feel like your tongue is burning. As aforementio ned, for this change in sensation in your mouth to happen, there must be some receptor invo lved that can turn a physical or chemical stimulus into signals your brain can decipher. In this case, this receptor happens to be the TRPV1 receptor (crazy name, just think of it as a warm receptor), which causes an influx of sodium and calcium into nerve cells. This init iates the firing of associated nerves that indicate to the brain that something is on fire in your mouth, figuratively but Iâ\\200\\231m sure that’s what it feels like, more or less. T RPM8 receptors are similar in mechanism, but instead conduct messages about cold stimuli wh en cooling agents like methanol bind to the receptors. Heat and temperatures are so fascinating to me, how we can perceive so strongly the change in movements of such small molecules. If you want to learn more about different types of re ceptors that signal for responses to other physical stimuli like pressure or touch, check o ut the following short video that inspired me to make this article!', 
+       'section': 'right after eating an unexpectedly spicy chilli?', 
+       'document': './doc/feel_temperature.pdf'
+      }
+  ]
+```
 

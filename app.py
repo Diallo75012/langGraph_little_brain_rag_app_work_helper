@@ -201,36 +201,46 @@ def dict_to_tuple(d: Dict[str, str]) -> Tuple[Tuple[str, str], ...]:
     """
     return tuple(d.items())
 
+# function needed to get the STR dict representation returned by the query analyzer and be able to fetch values as a dict
+def string_to_dict(string: str) -> Dict[str, Any]:
+    """
+    Converts a string representation of a dictionary to an actual dictionary.
+    
+    Args:
+    string (str): The string representation of a dictionary.
+    
+    Returns:
+    Dict[str, Any]: The corresponding dictionary.
+    """
+    try:
+        # Safely evaluate the string as a Python expression
+        dictionary = ast.literal_eval(string)
+        if isinstance(dictionary, dict):
+            return dictionary
+        else:
+            raise ValueError("The provided string does not represent a dictionary.")
+    except (SyntaxError, ValueError) as e:
+        raise ValueError(f"Error converting string to dictionary: {e}")
 
 """def analyze_user_query():"""
 ##### QUERY & EMBEDDINGS #####
 ## 1- IDENTIFY IF QUERY IS FOR A PFD OR A WEB PAGE
-# Main function to process the user query and return pandas dataframe
-def process_query(query: str) -> None:
+# Main function to process the user query and return pandas dataframe and the user query dictionary structured by llm
+def process_query(llm: ChatGroq, query: str, prompt: Dict) -> Tuple:
     # use of detect_content_type from `query_analyzer_module`
-    content_type, content = detect_content_type(query)
+    content_dict = detect_content_type(llm, query, prompt)
     # print content to see how it looks like, will it getthe filename if pdf or the full correct url if url...
     print("content: ", content)
-    if content_type == 'pdf':
+    if content_dict["pdf"] == "pdf":
         # functions from `lib_helpers.pdf_parser`
         df_final = get_final_df(content)
-    elif content_type == 'url':
+    elif content_dict["url"] == "url":
         # functions from `lib_helpers.webpage_parser`
         df_final = get_df_final(content)
     else:
-        return f"No PDF nor URL found in the query. Content: {content}"
+        return f"No PDF nor URL found in the query. Content: {content_dict)"
     
-    return df_final
-
-from query_analyzer_module, to get response object, maybe better than detect_content_type(query) other function from same library:
-{
-  'url': <url in user query make sure that it always has https. and get url from the query even if user omits the http>,
-  'pdf': <pdf full name or path in user query>,
-  'text': <if text only without any webpage url or pdf file .pdf path or file just put here the user query>,
-  'question': <if quesiton identified in user query rephrase it in an easy way to retrieve data from vector database search without the filename and in a good english grammatical way to ask question>
-}
-function to be improved as it should use a template to call llm and other utility functions and accept llm as parameter so that we can change it on the fly
-llm_call(query: str, prompt_llm_call: List[Tuple[str,str]])
+    return df_final, content_dict
 
 ## 2- STORE DOCUMENT DATA TO POSTGRESQL DATABASE
 # Function to store cleaned data in PostgreSQL

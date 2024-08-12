@@ -1,0 +1,46 @@
+How do we sense temperature?
+
+Harsh Desai
+Scientia Blog
+
+Harsh Desai
+
+Follow
+Published in
+Scientia Blog
+4 min read
+Feb 22, 2024
+
+
+
+    Exploring the cellular and molecular mechanisms of temperature sensation.
+
+One of my favourite things to learn in high school chemistry was how temperature worked—the average kinetic energy of substances being responsible for how hot or cold we might feel something to be. This was simple enough. Fast molecules that bump a lot = hotter. Slow molecules that don’t bump as often = colder. But that doesn’t exactly explain how our brain can sense and relay information about the temperature of a substance. When you pick up an ice cube, how does your brain know what you're touching is cold? How do we turn that measure of kinetic energy into signals that we can regularly identify as cold?
+
+That’s what I’m aiming to explain today, and having taken a course in cellular and molecular biology, this has only just started to make sense to me.
+Thermoreceptors
+
+The main challenge here is figuring out how thermal and kinetic energy is converted into electrical signals that can inform the brain of the temperature of a substance. When it comes to receiving or transmitting any sort of signals, it's a safe assumption that receptors of some sort play a massive role in the travel of information. That’s no different here.
+
+Introducing, the thermoreceptor!
+A simplified diagram of thermoreceptors in the dermis (layer of skin)
+A simplified diagram of thermoreceptors in the dermis (layer of skin) | Source
+
+Thermoreceptors are free nerve endings (FNE), which extend until the mid-epidermis, or the outermost layer of our skin. The ganglions—the structures responsible for receiving information from extracellular stimuli—are not enclosed within a membrane, which allows them to detect various physical stimuli through interactions involving our skin.
+
+Additionally, we have 2 types of thermoreceptors, cold and warm receptors, that can be varied in concentration throughout the body. I’m sure you’ve noticed that your ears and face get excessively cold in the winter, that’s due to a greater presence of cold receptors in those areas.
+
+To understand how these FNE thermoreceptors work, it is important to first understand a little bit about neurotransmission. The strength of a signal processed by the brain is dependent on the frequency of a neuron’s firing. Of course, we are always interacting with substances and objects, which all have surface temperatures that our thermoreceptors detect. However, these tend to be at room temperature, corresponding to normal firing rates. Interactions with cold or hot stimuli change the firing rate of their corresponding thermoreceptors.
+
+Touching something with a temperature between around 5–30°C will increase cold receptor firing and decrease warm receptor firing. Accordingly, stimuli of temperature between 30–45°C will increase warm receptor firing and decrease cold receptor firing. This changing pattern of neural impulses by FNEs is what indicates to your brain (and therefore, you) that you’re touching something cold or hot.
+
+In fact, when you touch something hot enough to hurt, another type of FNEs called nociceptors are activated, which signals to your brain that something you’re touching is causing you pain. That, coupled with a high warm receptor firing rate, makes you aware that you might burn yourself if you keep in contact with the given substance.
+Ion Channels
+
+So, we’ve covered how we feel one type of hot, but what about that burning feeling right after eating an unexpectedly spicy chilli?
+A diagram of TRP ion channels sensitive to temperature and chemical heat sources
+A diagram of TRP ion channels sensitive to temperature and chemical heat sources | Source
+
+The heat of a chilli pepper is slightly different from what we’ve talked about before. These plants contain capsaicin, a chemical agent that acts on interior surfaces in your mouth (and tongue, especially) to make it feel like your tongue is burning. As aforementioned, for this change in sensation in your mouth to happen, there must be some receptor involved that can turn a physical or chemical stimulus into signals your brain can decipher. In this case, this receptor happens to be the TRPV1 receptor (crazy name, just think of it as a warm receptor), which causes an influx of sodium and calcium into nerve cells. This initiates the firing of associated nerves that indicate to the brain that something is on fire in your mouth, figuratively but I’m sure that's what it feels like, more or less. TRPM8 receptors are similar in mechanism, but instead conduct messages about cold stimuli when cooling agents like methanol bind to the receptors.
+
+Heat and temperatures are so fascinating to me, how we can perceive so strongly the change in movements of such small molecules. If you want to learn more about different types of receptors that signal for responses to other physical stimuli like pressure or touch, check out the following short video that inspired me to make this article!
