@@ -7,6 +7,8 @@ import re
 import requests
 # for DB
 import psycopg2
+# for subprocesses
+import subprocess
 # for dataframe
 import pandas as pd
 from uuid import uuid4
@@ -73,6 +75,10 @@ from lib_helpers.embedding_and_retrieval import (
   connect_db,
   embeddings
 )
+# DOCKER REMOTE CODE EXECUTION
+# eg.: print(run_script_in_docker("test_dockerfile", "./app.py"))
+from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker # returns `Tuple[str, str]` stdout,stderr
+
 
 
 # load env vars
