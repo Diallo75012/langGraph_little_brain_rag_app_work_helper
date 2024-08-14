@@ -1,10 +1,25 @@
 import os
 import time
-from typing import Annotated, Literal, TypedDict
-from langchain_core.messages import HumanMessage
+# For str to dict
+import ast
+import re
+# for web request
+import requests
+# for DB
+import psycopg2
+# for dataframe
+import pandas as pd
+from uuid import uuid4
+# for typing func parameters and outputs
+from typing import Literal, TypedDict, Dict, List, Tuple, Any, Optional
+# for llm call with func or tool and prompts formatting
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+  AIMessage,
+  HumanMessage,
+  SystemMessage
+)
 from langchain.prompts import (
   PromptTemplate,
   ChatPromptTemplate,
@@ -13,25 +28,51 @@ from langchain.prompts import (
   AIMessagePromptTemplate
 )
 from langchain_core.output_parsers import JsonOutputParser
+# for graph creation and management
 from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode
+# for env. vars
 from dotenv import load_dotenv
-import psycopg2
-from typing import TypedDict, Dict, List, Any, Optional
+
 #### MODULES #####
-from prompts import prompts
+# PROMPTS
+from prompts.prompts import (
+  detect_content_type_prompt,
+  summarize_text_prompt,
+  generate_title_prompt
+)
 # USER QUERY ANALYSIS AND TRANSFORMATION
-from lib_helpers.query_analyzer_module import *
+from lib_helpers.query_analyzer_module import detect_content_type # returns `str`
 # INITIAL DOC PARSER, STORER IN POSTGRESL DB TABLE
-from lib_helpers.pdf_parser import *
-from lib_helpers.webpage_parser import *
+from lib_helpers.pdf_parser import pdf_to_sections # returns `list`
+from lib_helpers.webpage_parser import scrape_website # returns `Dict[str, Any]`
 # CUSTOM CHUNKING
-from lib_helpers.chunking_module import *
+from lib_helpers.chunking_module import (
+  # returns `List[Dict[str, Any]]`
+  create_chunks_from_webpage_data,
+  # returns `List[List[Dict[str,Any]]]`
+  create_chunks_from_db_data
+)
 # REDIS CACHE RETRIEVER
-from lib_helpers.query_matching import *
-# VECTORDB EMBEDDINGS AND RETRIEVAL
-from lib_helpers.embedding_and_retrieval import *
+from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail # returns `Dict[str, Any]`
+# DB AND VECTORDB EMBEDDINGS AND RETRIEVAL
+from lib_helpers.embedding_and_retrieval import (
+  # returns `List[Dict[str, Any]]`
+  answer_retriever, 
+  # returns `None\dict`
+  embed_all_db_documents,
+  # returns `List[Dict[str, Any]]`
+  fetch_documents,
+  COLLECTION_NAME,
+  CONNECTION_STRING,
+  update_retrieved_status,
+  clear_cache, cache_document,
+  redis_client,
+  create_table_if_not_exists,
+  connect_db,
+  embeddings
+)
 
 
 # load env vars
@@ -45,6 +86,9 @@ groq_llm_llama3_70b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")),
 groq_llm_llama3_70b_tool_use = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_70B_TOOL_USE"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 groq_llm_gemma_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_GEMMA_7B"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 
+
+collection_name = COLLECTION_NAME
+connection_string = CONNECTION_STRING
 
 # Connect to the PostgreSQL database
 def connect_db() -> psycopg2.extensions.connection:
@@ -185,7 +229,7 @@ final_state["messages"][-1].content
  - better use lots of mini tools than one huge and let the llm check. We will just prompting the agent to tell it what is the workflow. So revise functions here to be decomposed in mini tools
    `list of tools to create to be planned and helps for nodes creation as well so it is a mix of tools and nodes definition titles for the moment: [internet_search_tool, redis_cache_search_tool, embedding_vectordb_search_tool, user_query_analyzer_rephrasing_tool, node_use_tool_or_not_if_not_answer_query, save_initial_query_an_end_outcome_to_key_value_db_and_create_redis_cache_with_long_term_ttl, node_judge_answer_for_new_iteration_or_not]`
  - then build all those mini tools
-
+ - Have a function node that will just check the date and if 24h have passed it will reset the column retrieved in the database to False (for the moment we work with a TTL of 24h can be extended if needed so put the TTL as a function parameter that will be the same as in Redis). `from embedding_and_retrieval import clear_cache
 """
 ### HELPERS
 # to format prompts
@@ -262,9 +306,10 @@ def is_url_or_pdf(input_string: str) -> str:
         return "none"
 
 # Function to summarize text using Groq LLM
-def summarize_text(llm, row, maximum):
+def summarize_text(llm, row, maximum, prompt):
     # Add length constraints directly to the prompt
-    prompt_text = f"Answer putting text in markdown tags ```markdown ``` using no more than {maximum} characters to summarize this: {row['text']}."
+    prompt_text = eval(f'f"""{prompt}"""')
+    print("PROMPT_TEXT_CONTENT: ", prompt_text)
     response = llm.invoke(prompt_text)
     print("LLM RESPONSE: ", response)
     print("response content: ", response.content, "len response content: ", len(response.content))
@@ -277,8 +322,9 @@ def summarize_text(llm, row, maximum):
         summary = response.content
     return summary
 
-def generate_title(llm, row, maximum):
-    prompt_text = f"Please create a title in no more than {maximum} characters for: {row['section']} - {row['text']}. Make sure  your answering using in markdown format. Make sure that your answer is contained between markdown tags like in this example: ```markdown'title of the text here' ```."
+def generate_title(llm, row, maximum, prompt):
+    prompt_text = eval(f'f"""{prompt}"""')
+    print("PROMPT_TEXT_TITLE: ", prompt_text)
     response = llm.invoke(prompt_text)
     print("LLM RESPONSE: ", response)
     print("response content: ", response.content, "len response content: ", len(response.content))
@@ -290,31 +336,35 @@ def generate_title(llm, row, maximum):
         title = response.content
     return title
 
-def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int]):
+def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int], text_summary_prompt: str, title_summary_prompt: str):
   
   if is_url:
     # parse webpage content `dict`
     webpage_data = scrape_website(url_or_doc_path)
     print("Webpage_data", webpage_data)
     # create the chunks. make sure it is a list of data passed in [dict]
-    chunks =  create_chunks_from_data([webpage_data], chunk_size)
+    chunks =  create_chunks_from_webpage_data([webpage_data], chunk_size)
     # put content in a pandas dataframe. make sure it is a list of dict `[dict]` and not a 'dict'. chunks returned is a list[dict]
-    df = pd.DataFrame(chunks)
+    """
+     # limit the df for the moment  just to test, when app works fine we can release this constraint:
+       `df = pd.DataFrame(chunks)[0:12]`
+    """
+    df = pd.DataFrame(chunks)[0:12] 
     print("DF: ", df.head(10))
   else:
     # Parse the PDF and create a DataFrame
     pdf_data = pdf_to_sections(url_or_doc_path)
     print("PDF DATA: ", pdf_data)
     df = pd.DataFrame(pdf_data)
-    print("DF: ", df.head[10])
+    print("DF: ", df.head(10))
 
   ## CREATE FINAL DATAFRAME
   
   # generate summary of content text, we send row and will fetch there row[text]
-  df['summary'] = df.apply(lambda row: summarize_text(llm, row, maximum_content_length), axis=1) # here use llm to make the summary
+  df['summary'] = df.apply(lambda row: summarize_text(llm, row, maximum_content_length, text_summary_prompt["system"]["template"]), axis=1) # here use llm to make the summary
 
   # Generate titles using section and text (we send the row and we will fetch there row[text], row[section])
-  df['title'] = df.apply(lambda row: generate_title(llm, row, maximum_title_length), axis=1)
+  df['title'] = df.apply(lambda row: generate_title(llm, row, maximum_title_length, title_summary_prompt["system"]["template"]), axis=1)
 
   # Generate metadata and add UUID and retrieved fields
   df['id'] = [str(uuid4()) for _ in range(len(df))]
@@ -336,10 +386,46 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
   else:
     with open("test_pdf_parser_df_output.csv", "w", encoding="utf-8") as f:
       df_final.to_csv(f, index=False)
+  
   return df_final
 
+# store dataframe to DB
+def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str):
+    """
+    Store a pandas DataFrame to a PostgreSQL table using psycopg2.
 
+    Args:
+    df_final (pd.DataFrame): The DataFrame containing the data to store.
+    table_name (str): The name of the table where data should be stored.
+    """
+    # Establish a connection to the PostgreSQL database
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+    except Exception as e:
+        print(f"Failed to connect to the database: {e}")
+        return
 
+    # Insert data into the table row by row
+    for index, row in df_final.iterrows():
+        try:
+            cursor.execute(f"""
+                INSERT INTO {table_name} (id, doc_name, title, content, retrieved)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (row['id'], row['doc_name'], row['title'], row['content'], row['retrieved'])
+            )
+        except Exception as e:
+            print(f"Error inserting row {index}: {e}")
+            conn.rollback()  # Rollback in case of error for the current transaction
+        else:
+            conn.commit()  # Commit the transaction if successful
+
+    # Close the cursor and the connection
+    cursor.close()
+    conn.close()
+
+    print("DataFrame successfully stored in the database.")
 """def analyze_user_query():"""
 
 
@@ -348,22 +434,24 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
 
 ## 1- IDENTIFY IF QUERY IS FOR A PFD OR A WEB PAGE
 # Main function to process the user query and return pandas dataframe and the user query dictionary structured by llm. here df_final will have chunks already done! cool!
-def process_query(llm: ChatGroq, query: str, prompt: Dict, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int]) -> Tuple:
+def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int], detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt) -> Tuple:
     # use of detect_content_type from `query_analyzer_module`
-    content_str = detect_content_type(llm, query, prompt)
+    content_str = detect_content_type(llm, query, detect_prompt_template)
     content_dict = string_to_dict(content_str)
     # print content to see how it looks like, will it getthe filename if pdf or the full correct url if url...
     print("content_dict: ", content_dict)
-    if content_dict["pdf"]:
+    if content_dict["pdf"] and is_url_or_pdf(content_dict["pdf"].strip()) == "pdf":
         is_url = False
         # functions from `lib_helpers.pdf_parser`(for pdf we increase a bit the content lenght accepted and the chunk size)
-        df_final = get_final_df(llm, is_url, content_dict["pdf"].strip(), maximum_content_length + 200, maximum_title_length, chunk_size + 150)
-    elif content_dict["url"]:
+        df_final = get_final_df(llm, is_url, content_dict["pdf"].strip(), maximum_content_length + 200, maximum_title_length, chunk_size + 150, text_summary_prompt, title_summary_prompt)
+    elif content_dict["url"] and is_url_or_pdf(content_dict["url"].strip()) == "url":
         is_url = True
+        # just for text to see if `is_url_or_pdf` func works as expected
+        #return is_url
         # functions from `lib_helpers.webpage_parser`
-        df_final = get_final_df(llm, is_url, content_dict["url"].strip(), maximum_content_length, maximum_title_length, chunk_size)
+        df_final = get_final_df(llm, is_url, content_dict["url"].strip(), maximum_content_length, maximum_title_length, chunk_size, text_summary_prompt, title_summary_prompt)
     else:
-        return f"No PDF nor URL found in the query. Content: {content_dict)"
+        return f"No PDF nor URL found in the query. Content: {content_dict}"
     
     return df_final, content_dict
 
@@ -397,7 +485,7 @@ def custom_chunk_and_embed_to_vectordb(chunk_size: int, COLLECTION_NAME: str, CO
     return {"error": f"An error occured while trying to fetch rows from db -> {e}"}
   # here we get List[List[Dict[str,Any]]]
   try:
-    chunks = create_chunks(rows, chunk_size)
+    chunks = create_chunks_from_db_data(rows, chunk_size)
   except Exception as e:
     conn.close()
     return {"error": f"An error occured while trying to create chunks -> {e}"}
@@ -479,7 +567,7 @@ def call_chain(model: ChatGroq, prompt: PromptTemplate, prompt_input_vars: Optio
     chain = ( prompt | model )
     response = chain.invoke(prompt_input_vars)
     print("Response: ", response, type(response))
-    return response.content.split("```")[1].strip("python").strip()
+    return response.content.split("```")[1].strip("markdown").strip()
     
   # special for chat system/human/ai
   elif prompt and prompt_chat_input_vars:
@@ -487,13 +575,13 @@ def call_chain(model: ChatGroq, prompt: PromptTemplate, prompt_input_vars: Optio
     chain = ( prompt | model )
     response = chain.invoke(chat_input_vars_dict)
     print("Response: ", response, type(response))
-    return response.content.split("```")[1].strip("python").strip()
+    return response.content.split("```")[1].strip("markdown").strip()
 
   print("Chat input variables NOT found or missing prompt!")
   chain = ( prompt | model )
   response = chain.invoke(input={})
   print("Response: ", response, type(response))
-  return response.content.split("```")[1].strip("python").strip()
+  return response.content.split("```")[1].strip("markdown").strip()
 
 def make_normal_or_chat_prompt_chain_call(llm_client, prompt_input_variables_part: Dict, prompt_template_part: Optional[Dict], chat_prompt_template: Optional[Dict]):
   
@@ -517,13 +605,13 @@ def make_normal_or_chat_prompt_chain_call(llm_client, prompt_input_variables_par
 # just to test
 from prompts.prompts import test_prompt_tokyo, test_prompt_siberia, test_prompt_monaco, test_prompt_dakar
 
-print("SIBERIA: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_siberia["input_variables"], test_prompt_siberia["template"], {}))
-time.sleep(0.5)
-print("TOKYO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_tokyo["input_variables"], test_prompt_tokyo["template"], {}))
-time.sleep(0.5)
-print("DAKAR: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_dakar))
-time.sleep(0.5)
-print("MONACO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_monaco))
+#print("SIBERIA: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_siberia["input_variables"], test_prompt_siberia["template"], {}))
+#time.sleep(0.5)
+#print("TOKYO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_tokyo["input_variables"], test_prompt_tokyo["template"], {}))
+#time.sleep(0.5)
+#print("DAKAR: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_dakar))
+#time.sleep(0.5)
+#print("MONACO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_monaco))
 
 
 

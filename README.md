@@ -25,9 +25,10 @@ There is not extraction refining process implemented but would be amazing...
 - [x] adapt the function that analyzes query from the beginning to have that step finally done
 - [x] Create and test PDF and Webpage parser to get only the quality data and structure it in a good way to enhance embedding/retrieval performances
 - [ ] Test again all first step of query analysis and parsing of documents and add the step that saves to db uring the right structure
-- [ ] create all the extra functions matching each nodes
+- [ ] create all the extra functions matching each nodes and test those individually
 - [ ] create all mini tools
 - [ ] test functions along the way in the workflow of agents and make sure of the output type matches and that it works
+- [ ] create prompts along the way and store those in the prompt file using naming `<name_of_function>_prompt`
 - [x] Read comment in `query_matching.py` to create those logics and functions and nodes and tools functions
 - [ ] Find interesting storytelling for use case an interesting use case
 Docs: [LangGraph Doc Workflow Example](https://langchain-ai.github.io/langgraph/tutorials/rag/langgraph_self_rag_local/)

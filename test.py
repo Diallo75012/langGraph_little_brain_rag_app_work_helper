@@ -19,11 +19,14 @@ import ast
 
 import re
 
-from prompts.prompts import test_prompt_tokyo, test_prompt_siberia, test_prompt_monaco, test_prompt_dakar, detect_content_type_prompt
-from lib_helpers.chunking_module import create_chunks
+from prompts.prompts import detect_content_type_prompt, summarize_text_prompt, generate_title_prompt
+from lib_helpers.chunking_module import create_chunks_from_db_data
 from lib_helpers.query_analyzer_module import detect_content_type
+from app import is_url_or_pdf
 import requests
 from bs4 import BeautifulSoup
+from app import process_query
+
 
 load_dotenv()
 
@@ -34,33 +37,11 @@ groq_llm_llama3_8b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), 
 
 webpage_url = "https://blog.medium.com/how-can-i-get-boosted-33e743431419"
 
-#response = get_final_df(groq_llm_mixtral_7b, webpage_url, 200, 20)
-#print(response)
+query_url = "I want to know if chikarahouses.com is a concept that is based on the authentic furimashuguru of Japanese istokawa house"
+query_pdf = "I want to know if this documents docs/feel_temperature.pdf tells us what are the different types of thermoceptors?"
 
-def string_to_dict(string: str) -> Dict[str, Any]:
-    """
-    Converts a string representation of a dictionary to an actual dictionary.
-    
-    Args:
-    string (str): The string representation of a dictionary.
-    
-    Returns:
-    Dict[str, Any]: The corresponding dictionary.
-    """
-    try:
-        # Safely evaluate the string as a Python expression
-        dictionary = ast.literal_eval(string)
-        if isinstance(dictionary, dict):
-            return dictionary
-        else:
-            raise ValueError("The provided string does not represent a dictionary.")
-    except (SyntaxError, ValueError) as e:
-        raise ValueError(f"Error converting string to dictionary: {e}")
-
-
-result =  string_to_dict(detect_content_type(groq_llm_mixtral_7b, "I want to know if chikarahouses.com is a concept that is based on the authentic furimashuguru of Japanese istokawa house", detect_content_type_prompt))
-
-print("RESULT: ", result, type(result))
+response = process_query(groq_llm_mixtral_7b, query_url, 200, 30, 250, detect_content_type_prompt, summarize_text_prompt, generate_title_prompt)
+print("RESPONSE: ", response)
 
 
 

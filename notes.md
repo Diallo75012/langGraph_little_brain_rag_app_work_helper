@@ -1179,7 +1179,24 @@ Direct call is better as no issues with formatting of input, LLM understands mor
 ```
 
 #### Next
-- change all ```python ``` by ```markdown ``` in prompts as the stupid llm sometimes interpret the ```python ```` as being creation of python code...
-- see if padf_parser shouldn't be simplified and just use same process as webpage parser and get all text and then chunk it and then summarize it... not sure yet as pdf parser that we have take into consideration tables and more ... we keep it like that for the moment
-- test this function: process_query form app.py and make all necessary imports to app.py
-- export prompts to the prompt file and import those to be used in the functions that summarize text and make tiles 
+- change all ```python ``` by ```markdown ``` in prompts as the stupid llm sometimes interpret the ```python ```` as being creation of python code... - OK
+- see if pdf_parser shouldn't be simplified and just use same process as webpage parser and get all text and then chunk it and then summarize it... not sure yet as pdf parser that we have take into consideration tables and more ... we keep it like that for the moment  
+- test this function: process_query form app.py and make all necessary imports to app.py - OK
+- Where is the function that stores to the DB the url/pdf fetched - OK function created need to be tested
+- export prompts to the prompt file and import those to be used in the functions that summarize text and make tiles - OK
+
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
+- test function that stores data in database
+- create all functions that each nodes will need (tools and other functions)
+- create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
+- See if you need function to get rid of DB info. Create the function that resets the db to zero and the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+
+
+
+
+
+
+
+
+
+

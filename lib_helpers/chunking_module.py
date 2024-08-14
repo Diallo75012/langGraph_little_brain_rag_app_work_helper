@@ -19,7 +19,7 @@ load_dotenv()
 
 ### Create Chunks From Database Data
 # function that have th elogic to create chunks from database content and will make sure an overlapping of one row being last in one chunk and firt in the next chunk
-def create_chunks(rows: List[Dict[str, Any]], chunk_size: int) -> List[List[Dict[str,Any]]]:
+def create_chunks_from_db_data(rows: List[Dict[str, Any]], chunk_size: int) -> List[List[Dict[str,Any]]]:
     """Create chunks with overlapping content from the fetched rows."""
     chunks = []
     chunk = []
@@ -101,7 +101,7 @@ def chunk_text_data(data: Dict[str, Any], chunk_size: int) -> List[Dict[str, Any
     return chunks
 
 # put here data scrapped from webpage `{'text': text.strip(),'section': current_title.strip(),'url': url}` and choose chunk size
-def create_chunks_from_data(data: List[Dict[str, Any]], chunk_size: int) -> List[Dict[str, Any]]:
+def create_chunks_from_webpage_data(data: List[Dict[str, Any]], chunk_size: int) -> List[Dict[str, Any]]:
     """Creates chunks from the entire dataset."""
     all_chunks = []
     for row in data:

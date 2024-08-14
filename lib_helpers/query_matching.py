@@ -17,17 +17,17 @@ from dotenv import load_dotenv
 import numpy as np
 from langchain_community.embeddings import OllamaEmbeddings
 from sklearn.metrics.pairwise import cosine_similarity
-from lib_helpers.embedding_and_retrieval import *
+from lib_helpers.embedding_and_retrieval import update_retrieved_status, answer_retriever, redis_client, embeddings
 from typing import Dict, List, Any
 
 
 load_dotenv()
 
 # Connect to Redis
-redis_client = redis.StrictRedis(host=os.getenv("REDIS_HOST"), port=os.getenv("REDIS_PORT"), db=0)
+REDIS_CLIENT = redis_client
 
 # Initialize embeddings
-embeddings = OllamaEmbeddings(temperature=0)
+EMBEDDINGS = embeddings
 
 def get_query_hash(query: str) -> str:
     """Generate a hash for the query."""
@@ -37,31 +37,31 @@ def get_query_hash(query: str) -> str:
 def cache_response(query: str, response: List[Dict[str, Any]], ttl: int = 3600) -> dict:
     """Cache the response in Redis with both hash and vector representation."""
     query_hash = get_query_hash(query)
-    query_vector = embeddings.embed_text(query)
+    query_vector = EMBEDDINGS.embed_text(query)
 
     # Store with query hash as key
-    redis_client.setex(query_hash, timedelta(seconds=ttl), json.dumps(response))
+    REDIS_CLIENT.setex(query_hash, timedelta(seconds=ttl), json.dumps(response))
 
     # Store with query vector as key (serialize vector)
     vector_key = f"vector:{json.dumps(query_vector)}"
-    redis_client.setex(vector_key, timedelta(seconds=ttl), json.dumps(response))
+    REDIS_CLIENT.setex(vector_key, timedelta(seconds=ttl), json.dumps(response))
     return {"query_hash": query_hash, "query_vector": query_vector}
 
 # exact match search fucntions
 def fetch_cached_response_by_hash(query: str) -> dict|List[Dict[str,Any]]|None:
     """Fetch the cached response from Redis using query hash if it exists."""
     query_hash = get_query_hash(query)
-    data = redis_client.get(query_hash)
+    data = REDIS_CLIENT.get(query_hash)
     return json.loads(data) if data else None
 
 def fetch_all_cached_embeddings() -> dict:
     """Fetch all cached embeddings from Redis."""
-    keys = redis_client.keys('vector:*')
+    keys = REDIS_CLIENT.keys('vector:*')
     all_embeddings = {}
     for key in keys:
         embedding_str = key.decode().split("vector:")[1]
         embedding = json.loads(embedding_str)
-        data = json.loads(redis_client.get(key))
+        data = json.loads(REDIS_CLIENT.get(key))
         all_embeddings[embedding_str] = {
             "embedding": embedding,
             "response": data
@@ -111,10 +111,10 @@ def perform_vector_search(query: str, score: float) -> List[Dict[str, Any]]:
   return response
 
 #### This the meat function which does the exact match, then, semantic match, then the expensive vector database retireval and cache it if it finds anything for the response
-def handle_query_by_calling_cache_then_vectordb_if_fail(query: str, score: float) -> dict:
+def handle_query_by_calling_cache_then_vectordb_if_fail(query: str, score: float) -> Dict[str, Any]:
     """Handle the user query by deciding between cache, semantic search, and vector search."""
     # vectorize the query for semantic search
-    query_vectorized = embeddings.embed_text(query)
+    query_vectorized = EMBEDDINGS.embed_text(query)
 
     # Try to fetch from cache (Exact Query Match)
     cached_response = fetch_cached_response_by_hash(query)
@@ -122,7 +122,7 @@ def handle_query_by_calling_cache_then_vectordb_if_fail(query: str, score: float
         return {"exact_match_search_response_from_cache": cached_response}
 
     # Perform semantic search if exact query is not found
-    semantic_response = perform_semantic_search_in_redis(query_vectorized)
+    semantic_response = perform_semantic_search_in_redis(query_vectorized, score)
     if semantic_response:
         return {"semantic_search_response_from_cache": semantic_response}
 

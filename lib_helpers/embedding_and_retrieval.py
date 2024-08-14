@@ -40,7 +40,11 @@ def create_table_if_not_exists():
     conn = connect_db()
     cursor = conn.cursor()
     """
-    # here doc_name is the document where the data have been extracted from, title is the section/chapter.paragraph title, content is the chunck content, retrieved is a boolean to check if document has been retrieved in the past or not to create later on a cache of that data so that it will improve retrieval if we get same kind of query (using special agent node to check that, and cache Redis with TTL and reset of that column so we need a function that does that, one that created the cache based on that column True and put in in Redis with TTL and another which clears the cache everyday.week.month.. and reset that column to False)
+    # Here:
+      - doc_name: is the document where the data have been extracted from
+      - title: is the section/chapter/paragraph title
+      - content: is the chunck content
+      - retrieved: is a boolean to check if document has been retrieved in the past or not to create later on, a cache of that data so that it will improve retrieval if we get same kind of query (using special agent node to check that, and cache Redis with TTL and reset of that column so we need a function that does that, one that created the cache based on that column True and put in Redis with TTL and another which clears the cache everyday.week.month.. and reset that column to False)
     """
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS documents (
@@ -57,12 +61,27 @@ def create_table_if_not_exists():
 
 create_table_if_not_exists()
 
-# REDIS CACHE FUNC
 
+
+# Define connection to PGVector database
+CONNECTION_STRING = PGVector.connection_string_from_db_params(
+    driver=os.getenv("DRIVER"),
+    host=os.getenv("HOST"),
+    port=int(os.getenv("PORT")),
+    database=os.getenv("DATABASE"),
+    user=os.getenv("USER"),
+    password=os.getenv("PASSWORD"),
+)
+
+COLLECTION_NAME = os.getenv("COLLECTION_NAME")
+
+
+
+# REDIS CACHE FUNC
 # Connect to Redis
 redis_client = redis.StrictRedis(host=os.getenv("REDIS_HOST"), port=os.getenv("REDIS_PORT"), db=0)
 
-# cache doc in Redis function
+# cache doc in Redis function: qyeru_matching library have it's own cache_response so this function can be used as helper if needed
 def cache_document(doc_id: uuid.UUID, content: str, ttl: int = 3600):
     """Cache the document content in Redis with a TTL (time-to-live)."""
     redis_client.setex(str(doc_id), timedelta(seconds=ttl), content)
@@ -89,19 +108,6 @@ def update_retrieved_status(doc_id: uuid.UUID):
     conn.commit()
     cursor.close()
     conn.close()
-
-
-# Define connection to PGVector database
-CONNECTION_STRING = PGVector.connection_string_from_db_params(
-    driver=os.getenv("DRIVER"),
-    host=os.getenv("HOST"),
-    port=int(os.getenv("PORT")),
-    database=os.getenv("DATABASE"),
-    user=os.getenv("USER"),
-    password=os.getenv("PASSWORD"),
-)
-
-COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 
 # gets all documents from DB
 def fetch_documents() -> List[Dict[str, Any]]:
@@ -149,6 +155,9 @@ def embed_all_db_documents(all_docs: List[Dict[str,Any]], collection_name: str, 
     create_embedding_collection(docs, collection_name, connection_string)
   except Exception as e:
     return {"error": f"An error occured while trying embed documents -> {e}"}
+
+
+
 
 #### RETRIEVE WITH RELEVANCY SCORE AND FETCH CORRESPONDING POSTGRESQL ROWS
 

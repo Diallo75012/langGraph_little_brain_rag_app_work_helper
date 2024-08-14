@@ -3,53 +3,12 @@
 ### Extract and Parse Web Page Content
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-import psycopg2
-from uuid import uuid4
 from dotenv import load_dotenv
 import os
-from langchain_groq import ChatGroq
-from lib_helpers.chunking_module import create_chunks_from_data
 from typing import Dict, Any, List, Optional
 
+
 load_dotenv()
-
-# Initialize the Groq LLM for summarization
-groq_llm_mixtral_7b = ChatGroq(
-    temperature=float(os.getenv("GROQ_TEMPERATURE")), 
-    groq_api_key=os.getenv("GROQ_API_KEY"), 
-    model_name=os.getenv("MODEL_MIXTRAL_7B"),
-    max_tokens=int(os.getenv("GROQ_MAX_TOKEN"))
-)
-
-# Connect to the PostgreSQL database
-def connect_db() -> psycopg2.extensions.connection:
-    return psycopg2.connect(
-        database=os.getenv("DATABASE"), 
-        user=os.getenv("USER"), 
-        password=os.getenv("PASSWORD"),
-        host=os.getenv("HOST"), 
-        port=os.getenv("PORT")
-    )
-
-def create_table_if_not_exists():
-    """Create the documents table if it doesn't exist."""
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS documents (
-            id UUID PRIMARY KEY,
-            doc_name TEXT,
-            title TEXT,
-            content TEXT,
-            retrieved BOOLEAN
-        );
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-create_table_if_not_exists()
 
 # Function to extract text and sections from a web page
 def scrape_website(url: str) -> Dict[str, Any]:

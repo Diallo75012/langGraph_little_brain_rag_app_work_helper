@@ -1,51 +1,50 @@
 id,doc_name,title,content,retrieved
-573892ad-fae2-4fbb-9fb9-f36cfc68c170,feel_temperature.pdf,"""Unraveling Temperature Sensation Mechanisms""","1. Temperature sensation involves cellular and molecular mechanisms.
-2. Sensing temperature is not just about kinetic energy of molecules.
-3. When you touch something cold, receptors in your skin sense the temperature change.
-4. This information is then sent to the brain through nerves as electrical signals.
-5. The brain interprets these signals as ""cold"".",False
-c678f3d1-fdbf-4d43-b836-d814268263de,feel_temperature.pdf,"""Demystifying ld?""","- DNA is double-stranded, with complementary bases (A-T, C-G)
-- Transcription creates mRNA from DNA template
-- mRNA has codons (3-letter sequences) that specify amino acids
-- Translation uses mRNA codons to build polypeptide chains
-- Folding of polypeptide chains creates functional proteins",False
-d080b56d-f327-4e76-b18c-f3ceaf5ac3eb,feel_temperature.pdf,"""Decoding Thermal Energy into Electrical Signals""","- Challenge: Converting thermal/kinetic energy to electrical signals for the brain
-- Role of receptors: Massive in signal travel",False
-2fef0b95-5da7-4fda-b78f-869e80fb2c1c,feel_temperature.pdf,"""Thermoreceptors in Dermis: Free Nerve Endings""","Thermoreceptors in skin:
-- Free nerve endings (FNE) in dermis
-- Ganglions (receive info from stimuli) in mid-epidermis, no membrane
-- 2 types: cold receptors, warm receptors
-- Concentration varies throughout body, e.g., ears, face have more cold receptors",False
-7541c549-1652-4b95-aa5d-81f6aa855d36,feel_temperature.pdf,"""FNE Thermoreceptors & Neurotransmission""","1. Neurotransmission: Signal strength depends on neuron firing frequency.
-2. Thermoreceptors detect temperatures of substances/objects, usually at room temperature (normal firing rates).
-3. Cold or hot stimuli change the firing rate of corresponding thermoreceptors.",False
-b41dda05-8e2e-40ac-be71-03eebf93a0a3,feel_temperature.pdf,"""Neural Responses to Temperature Stimuli""","Temperature Range | Cold Receptor Firing | Warm Receptor Firing | FNE Activation
------------------|---------------------|---------------------|----------------
-< 5°C            | Increase            | Decrease            | Cold FNEs
-30-45°C         | Decrease            | Increase            | Warm FNEs
-> 45°C          | Decrease            | Increase            | Nociceptors + Warm FNEs (pain)",False
-c3d97047-333e-4dca-999b-f3d9de7a4432,feel_temperature.pdf,"""Ion Channels: Exploring Burning Sensations""","Burning_sensation = {
-    ""Causes"": [""nerve irritation/damage"", ""injury"", ""infection"", ""autoimmune conditions"", 
-               ""skin conditions"", ""medication side effect""]
-}",False
-951c0edd-e8a8-4301-ba12-2ce22929ad92,feel_temperature.pdf,"TRP Ion Channels Sensitive to Temperature & Chemical Heat Sources
------------------------------------------------------------------
+65aa3d4d-2884-4d13-83b0-96c9b0176c70,docs/feel_temperature.pdf,"""Unraveling Temperature Sensation: From Molecular Energy to Brain Signals""
 
-- TRPV1 (""warm"" receptor)
-  - Activated by capsaicin (chili pepper)
-  - Influx of sodium and calcium into nerve cells
-  - Initiates ""on fire"" sensation
+---
 
-- TRPM8
-  - Conducts messages about cold stimuli
-  - Activated by cooling agents like methanol","TRP ion channels
-    |
-Temperature/chemical heat sources
-    |
-Activate TRP ion channels
-    |
-Influx of sodium and calcium into nerve cells
-    |
-Firing of associated nerves
-    |
-Signaling to the brain",False
+When you touch an ice cube, the sensation of cold isn't simply due to the slow movement of molecules. Instead, it's a complex process involving cellular and molecular mechanisms that convert the measure of kinetic energy into signals our brain can identify as cold.
+
+At the molecular level, temperature affects the behavior of ion channels in specialized sensory neurons called nociceptors. These channels are responsible for detecting temperature changes and converting them into electrical signals.
+
+There are two main types of temperature-sensitive ion channels: TRP (Transient Receptor Potential) channels and TRPM (Transient Receptor Potential Melastatin) channels. TRP channels are involved in detecting both heat and cold, while TRPM channels are primarily responsible for cold sensation.
+
+When you touch a cold object, such as an ice cube, the temperature causes TRPM channels to open, allowing positively charged ions (like sodium and calcium) to flow into the neuron. This influx of ions depolarizes the neuron, generating an electrical signal.
+
+Once the electrical signal is generated, it travels along the neuron's axon to the spinal cord, where it synapses with secondary neurons. These neurons then carry the signal to the brain, specifically to the thalamus and somatosensory cortex, where the sensation of cold is perceived and identified.
+
+In summary, the process of temperature sensation involves the detection of temperature changes at the molecular level, the conversion of these changes into electrical signals, and the transmission of these signals to the brain for perception and identification. This intricate system allows us to experience and react to the world around us in a meaningful way.","Temperature sensation involves complex cellular and molecular mechanisms. While high school chemistry teaches that temperature is related to the average kinetic energy of molecules, it doesn't explain how our brains sense and relay this information. When we touch something cold like an ice cube, specialized nerve cells called thermoreceptors detect the temperature change. These receptors convert the physical stimulus into electrical signals that are sent to the brain via the nervous system. The brain then interprets these signals as cold. This process is made possible by the intricate cellular and molecular machinery of thermoreceptors, which are specifically designed to respond to temperature changes.",False
+e46afa5b-66a3-4527-ac36-b61d9f3816dc,docs/feel_temperature.pdf,"""Decoding 'ld?' in Cellular Biology""","Explaining the topic: ""That's what I'm aiming to explain today, with a background in cellular and molecular biology, this concept has recently become clear to me.""",False
+2806cc8c-9736-4a8f-8d26-f62a9773fe5c,docs/feel_temperature.pdf,"""Decoding Temperature: Thermoreceptor Signal Conversion""
+
+---
+
+Thermoreceptors are specialized sensory receptors that convert thermal and kinetic energy into electrical signals, allowing the brain to perceive and interpret temperature changes. Unraveling the mechanisms behind this energy-to-electricity transformation is crucial for understanding temperature sensation and processing.
+
+In general, receptors play a vital role in signal transmission, and thermoreceptors are no exception. These receptors are found in the skin and mucous membranes, and they can be classified into two categories based on their temperature sensitivity: cold and warm receptors.
+
+Cold receptors are activated by a decrease in temperature, while warm receptors respond to an increase in temperature. These receptors contain temperature-sensitive ion channels that change their conformation in response to temperature fluctuations. This conformational change allows ions to flow through the channels, generating electrical signals that can be transmitted to the brain via afferent neurons.
+
+The main challenge in understanding thermoreceptor function lies in the complexity of the energy-to-electricity conversion process. This process involves several steps, including:
+
+1. Thermal energy absorption: Thermoreceptors absorb thermal energy from the environment, causing a change in the temperature of the receptor.
+2. Ion channel activation: Temperature-sensitive ion channels in the thermoreceptor change their conformation in response to the temperature change, allowing ions to flow through the channels.
+3. Membrane depolarization: The flow of ions through the ion channels generates an electrical signal that depolarizes the membrane of the thermoreceptor.
+4. Action potential generation: The depolarization of the thermoreceptor membrane triggers the generation of action potentials, which can be transmitted to the brain via afferent neurons.
+
+Understanding the molecular mechanisms behind these steps is essential for developing a comprehensive understanding of thermoreceptor function. Recent advances in molecular biology and neuroscience have shed light on some of these mechanisms, but much work remains to be done.
+
+In summary, thermoreceptors are specialized sensory receptors that convert thermal and kinetic energy into electrical signals, allowing the brain to perceive and interpret temperature changes. The main challenge in understanding thermoreceptor function is figuring out how thermal and kinetic energy is converted into electrical signals that can inform the brain of the temperature of a substance. Unraveling the mechanisms behind this energy-to-electricity transformation is crucial for understanding temperature sensation and processing.","The key issue is understanding how thermal and kinetic energy are converted into electrical signals that can be interpreted by the brain as temperature. Receptors are crucial in transmitting signals, and this process is no exception.",False
+92e88c39-df2d-497e-bd8b-2e3f2513a363,docs/feel_temperature.pdf,"""Thermoreceptors: Simplified Diagram & Types""","Thermoreceptors in the dermis are free nerve endings (FNE) that extend to the mid-epidermis. These structures detect physical stimuli without a membrane enclosure. There are two types of thermoreceptors: cold and warm receptors, which vary in concentration throughout the body. A higher concentration of these receptors in areas like the ears and face can cause them to feel excessively cold in winter.",False
+79f38984-32d3-4d5a-b619-4b13bdb4b406,docs/feel_temperature.pdf,'Frequency of Firing in Cold Thermoreceptors',"To understand FNE (Free Nerve Ending) thermoreceptors, it's crucial to know that signal strength in the brain depends on neuron firing frequency. We constantly interact with objects of varying temperatures, but they usually are at room temperature, causing normal thermoreceptor firing rates. Cold or hot stimuli alter the firing rate of corresponding thermoreceptors.",False
+2dc9a1f9-81fb-4378-a3b2-b88eb61142b5,docs/feel_temperature.pdf,"""Neural Responses to Temperature: Cold, Warm, and Pain""","""Cold and warm receptors, types of Free Nerve Endings (FNEs), respond to temperature changes. When you touch something between 5-30°C, cold receptors increase their firing while warm receptors decrease. Conversely, temperatures between 30-45°C increase warm receptor firing and decrease cold receptor firing. High warm receptor firing rates, along with activation of nociceptors (another type of FNE) at high temperatures, signal pain and potential injury, making you aware of the danger.""",False
+79e17fc2-c596-4960-9790-315c773b39c2,docs/feel_temperature.pdf,'Ion Channels: The Science of Burning Heat Sensation',"Sure, let's discuss the sensation of a ""burning"" feeling. This type of heat is often associated with damage or injury to the body. It can be caused by exposure to extreme temperatures, chemicals, or even certain medical conditions. Unlike the comfortable warmth of a hot tub or sauna, a burning sensation is typically painful and can lead to serious harm if not addressed promptly. If you experience a burning feeling, it's important to identify and remove the source of the heat as soon as possible and seek medical attention if necessary.",False
+77df6ad7-2be8-47bf-978b-431661573209,docs/feel_temperature.pdf,"TRP Ion Channels: The Receptors Behind Spicy Chilli Heat
+
+The heat of a chilli pepper is slightly different from what we've talked about before. These plants contain capsaicin, a chemical agent that acts on interior surfaces in your mouth (and tongue, especially) to make it feel like your tongue is burning. As aforementioned, for this change in sensation in your mouth to happen, there must be some receptor involved that can turn a physical or chemical stimulus into signals your brain can decipher. In this case, this receptor happens to be the TRPV1 receptor (crazy name, just think of it as a warm receptor), which causes an influx of sodium and calcium into nerve cells. This initiates the firing of associated nerves that indicate to the brain that something is on fire in your mouth, figuratively but I'm sure that's what it feels like, more or less. TRPM8 receptors are similar in mechanism, but instead conduct messages about cold stimuli when cooling agents like methanol bind to the receptors. Heat and temperatures are so fascinating to me, how we can perceive so strongly the change in movements of such small molecules. If you want to learn more about different types of receptors that signal for responses to other physical stimuli like pressure or touch, check out the following short video that inspired me to make this article!","TRP ion channels and heat sensation
+
+The heat of a chilli pepper is caused by the chemical agent capsaicin, which activates the TRPV1 receptor. This receptor allows an influx of sodium and calcium into nerve cells, triggering nerves that signal to the brain that something is burning in the mouth.
+
+Similarly, TRPM8 receptors are activated by cold stimuli, such as methanol, and conduct messages about cold temperatures to the brain.
+
+The way we perceive changes in temperature is fascinating, as it involves the detection of small movements of molecules. To learn more about other physical stimuli receptors, check out this video.",False
