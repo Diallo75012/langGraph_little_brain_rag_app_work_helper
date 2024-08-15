@@ -1185,15 +1185,83 @@ Direct call is better as no issues with formatting of input, LLM understands mor
 - Where is the function that stores to the DB the url/pdf fetched - OK function created need to be tested
 - export prompts to the prompt file and import those to be used in the functions that summarize text and make tiles - OK
 
+
+# PSQL
+
+### postgresql 
+```bash
+# connect
+sudo -u postgres psql
+```
+
+```sql
+# create user
+CREATE USER creditizens WITH PASSWORD 'your_secure_password';
+# set priviledges for user to have hands on tables and pgvector
+ALTER USER creditizens CREATEDB;
+GRANT ALL PRIVILEGES ON DATABASE your_database_name TO creditizens;
+GRANT USAGE ON SCHEMA public TO creditizens;
+GRANT CREATE ON SCHEMA public TO creditizens;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO creditizens;
+# ensure user can activate pgvector
+GRANT USAGE ON SCHEMA vector TO creditizens;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA vector TO creditizens;
+```
+
+```sql
+# list all users
+\du
+# list all databases
+\l
+```
+
+```sql
+# check priviledge of specific user on specific database
+SELECT grantee, privilege_type 
+FROM information_schema.role_table_grants 
+WHERE table_catalog = 'your_database_name' 
+AND grantee = 'your_username';
+```
+
+```sql
+# list all databases and their owners
+SELECT datname AS "Database",
+       pg_catalog.pg_get_userbyid(datdba) AS "Owner"
+FROM   pg_catalog.pg_database
+ORDER BY 1;
+```
+
+```sql
+# get detailed information about user privileges on all databases
+SELECT datname AS "Database",
+       pg_catalog.pg_get_userbyid(datdba) AS "Owner",
+       pg_catalog.array_to_string(datacl, E'\n') AS "Access Privileges"
+FROM   pg_catalog.pg_database
+ORDER BY 1;
+```
+
+```bash
+# terminal command for scripting eg.
+# eg.: 2
+psql -U postgres -c "\du"
+# eg.: 1
+psql -U postgres -d your_database_name -c "YOUR_SQL_QUERY_HERE"
+```
+
+#### psycopg2 (get also psycopg2-binary) security against SQL injection
+
+```python
+import psycopg2
+from psycopg2 import sql
+# then: Using sql.SQL and related classes is recommended when you need to insert identifiers like table names or column names dynamically. This ensures that these values are safely quoted and prevents SQL injection
+```
+
+# Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
 - test function that stores data in database
 - create all functions that each nodes will need (tools and other functions)
 - create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
 - See if you need function to get rid of DB info. Create the function that resets the db to zero and the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
-
-
-
-
 
 
 
