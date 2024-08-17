@@ -334,8 +334,8 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
      # limit the df for the moment  just to test, when app works fine we can release this constraint:
        `df = pd.DataFrame(chunks)[0:12]`
     """
-    df = pd.DataFrame(chunks)[0:12] 
-    print("DF: ", df.head(10))
+    df = pd.DataFrame(chunks)[0:3] 
+    print("DF: ", df.head())
   else:
     # Parse the PDF and create a DataFrame
     pdf_data = pdf_to_sections(url_or_doc_path)
@@ -415,9 +415,9 @@ def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximu
 store dataframe to DB by creating a custom table and by activating pgvector and insering the dataframe rows in it
 so here we will have different tables in the database (`conn`) so we will have the flexibility to delete the table entirely if not needed anymore
 """
-def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str, conn: psycopg2.extensions.connection):
+def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str):
     """
-    Store a pandas DataFrame to a PostgreSQL table using psycopg2.
+    Store a pandas DataFrame to a PostgreSQL table using psycopg2, avoiding duplicate records.
     
     Args:
     df_final (pd.DataFrame): The DataFrame containing the data to store.
@@ -425,6 +425,7 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str, conn: psycopg
     """
     # Establish a connection to the PostgreSQL database
     try:
+        conn = connect_db()
         cursor = conn.cursor()
     except Exception as e:
         print(f"Failed to connect to the database: {e}")
@@ -440,7 +441,7 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str, conn: psycopg
                 content TEXT,
                 retrieved BOOLEAN
             );
-        """))
+        """).format(sql.Identifier(table_name)))
         conn.commit()
     except Exception as e:
         print(f"Failed to create table {table_name}: {e}")
@@ -458,20 +459,32 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str, conn: psycopg
         conn.close()
         return
 
-    # Insert data into the table row by row
+    # Insert data into the table row by row, avoiding duplicates
     for index, row in df_final.iterrows():
         try:
-            cursor.execute(f"""
-                INSERT INTO {table_name} (id, doc_name, title, content, retrieved)
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (row['id'], row['doc_name'], row['title'], row['content'], row['retrieved'])
-            )
+            # Check if the content already exists in the table
+            cursor.execute(sql.SQL(f"""
+                SELECT COUNT(*) FROM {table_name}
+                WHERE doc_name = %s AND content = %s;
+            """), 
+            (row['doc_name'], row['content']))
+            
+            count = cursor.fetchone()[0]
+            
+            if count == 0:
+                # If no duplicate found, insert the row
+                cursor.execute(sql.SQL(f"""
+                    INSERT INTO {table_name} (id, doc_name, title, content, retrieved)
+                    VALUES (%s, %s, %s, %s, %s)
+                """),
+                (row['id'], row['doc_name'], row['title'], row['content'], row['retrieved']))
+                conn.commit()  # Commit the transaction if successful
+            else:
+                print(f"Duplicate found for doc_name: {row['doc_name']}, content: {row['content']}. Skipping insertion.")
+
         except Exception as e:
             print(f"Error inserting row {index}: {e}")
             conn.rollback()  # Rollback in case of error for the current transaction
-        else:
-            conn.commit()  # Commit the transaction if successful
 
     # Close the cursor and the connection
     cursor.close()
@@ -479,10 +492,11 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str, conn: psycopg
 
     print("DataFrame successfully stored in the database.")
         
-    return "document quality data saved to postgresql database table"
+    return f"Document quality data saved to PostgreSQL database table: {table_name}"
+
 
 # function to delete table hat can be used as a tool
-def delete_table(table_name: str, conn: psycopg2.extensions.connection):
+def delete_table(table_name: str):
     """
     Delete a table from the PostgreSQL database using psycopg2.
     
@@ -491,6 +505,7 @@ def delete_table(table_name: str, conn: psycopg2.extensions.connection):
     """
     # Establish a connection to the PostgreSQL database
     try:
+        conn = connect_db()
         cursor = conn.cursor()
     except Exception as e:
         print(f"Failed to connect to the database: {e}")
@@ -512,12 +527,12 @@ def delete_table(table_name: str, conn: psycopg2.extensions.connection):
 
 ## 3- EMBED ALL DATABASE SAVED DOC DATA TO VECTORDB
 # `COLLECTION_NAME` and `CONNECTION_STRING` should be recognized as it comes from 'lib_helpers.embedding_and_retrieval'
-def custom_chunk_and_embed_to_vectordb(chunk_size: int, COLLECTION_NAME: str, CONNECTION_STRING: str, conn: psycopg2.extensions.connection) -> dict:
+def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECTION_NAME: str, CONNECTION_STRING: str) -> dict:
   # Embed all documents in the database
   # function from module `lib_helpers.embedding_and_retrieval`
   # here we get List[Dict[str,Any]]
   try:  
-    rows = fetch_documents()
+    rows = fetch_documents(table_name)
   except Exception as e:
     conn.close()  
     return {"error": f"An error occured while trying to fetch rows from db -> {e}"}

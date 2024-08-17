@@ -24,7 +24,8 @@ There is not extraction refining process implemented but would be amazing...
 - [x] create nodes and edges
 - [x] adapt the function that analyzes query from the beginning to have that step finally done
 - [x] Create and test PDF and Webpage parser to get only the quality data and structure it in a good way to enhance embedding/retrieval performances
-- [ ] Test again all first step of query analysis and parsing of documents and add the step that saves to db uring the right structure
+- [x] Test again all first step of query analysis and parsing of documents and add the step that saves to db uring the right structure
+- [ ] Test retrieval workflow with caching workflow
 - [ ] create all the extra functions matching each nodes and test those individually
 - [ ] create all mini tools
 - [ ] test functions along the way in the workflow of agents and make sure of the output type matches and that it works

@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+import pandas as pd
 
 
 class ParseDocuments(BaseModel):

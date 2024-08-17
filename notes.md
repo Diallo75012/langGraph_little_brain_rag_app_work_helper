@@ -804,7 +804,68 @@ For that if we decide to check on the cache before making any vector search, we 
 But we will implement a function that does both, if it founds same query, it fetches from cache but will also check if there is semantic similiraty relevance. If not,the last chance will be to go to the vector db search.
 
 When all fails, even the vector db search, LLM can use other tools to search online.
- 
+
+# beware of `langchain_community.vectorstores.pgvector` metadata storage as JSONB instead of JSON
+```bash
+# warning message
+/home/creditizens/langgraph/langgraph_venv/lib/python3.10/site-packages/langchain_community/vectorstores/pgvector.py:328: LangChainPendingDeprecationWarning: Please use JSONB instead of JSON for metadata. This change will allow for more efficient querying that involves filtering based on metadata.Please note that filtering operators have been changed when using JSOB metadata to be prefixed with a $ sign to avoid name collisions with columns. If you're using an existing database, you will need to create adb migration for your metadata column to be JSONB and update your queries to use the new operators. 
+  warn_deprecated(
+```
+
+# Store and query embeddings metadata: `full example`
+Interesting when wanting to filter the content and narrow down the search to specific parts of the documents and to organize those like that.
+It could be a table column having those metadata and the collection having the embedded target document with same metadata. So two different agents or nodes could be used, one that search the metada using user query and the other taking that result to perform a vector search. The last would send it to another node for analysis and answer formating or next step actions.
+
+To store vectors as JSONB in a PostgreSQL table, especially when dealing with high-dimensional vectors like 4096 dimensions, you would create a table with a JSONB column and an additional column to store the vectors. Here's how you can do this using the xample of a table storage for everything to make it easily understandable:
+
+
+```sql
+# table creation with JSONB fields and 4096(ollama mistral:7b dimensions) vector dimension field
+CREATE TABLE documents (
+    id UUID PRIMARY KEY,
+    doc_name TEXT,
+    title TEXT,
+    content JSONB,
+    embedding VECTOR(4096),
+    metadata JSONB
+);
+
+# insert data using `::JSONB`
+INSERT INTO documents (id, doc_name, title, content, embedding, metadata)
+VALUES (
+    gen_random_uuid(),
+    'example_doc.pdf',
+    'An Example Document',
+    '{"paragraph1": "This is an example paragraph.", "paragraph2": "This is another example."}',
+    '[0.1, 0.2, 0.3, ..., 0.4096]'::VECTOR(4096),
+    '{"author": "John Doe", "tags": ["example", "demo"]}'::JSONB
+);
+
+# query metada using `@>`
+SELECT * 
+FROM documents 
+WHERE metadata @> '{"author": "John Doe"}';
+
+# perform vector similarity using `<=>` and `::VECTOR(4096)`
+SELECT id, title, embedding
+FROM documents
+ORDER BY embedding <=> '[0.1, 0.2, 0.3, ..., 0.4096]'::VECTOR(4096)
+LIMIT 10;
+```
+- The <=> operator is used for vector similarity search.
+- The JSONB @> operator is used to check if the JSONB column contains the specified key-value pair.
+
+**For the moment**
+- Can search using metadata `key` using: db.similarity_search_with_score(query, filter={"metadata.key": "value"}) for the moment as we are using PGVector collection which is different way to store embeddings and not a Postgresql normal table column but a separate entity where embeddings are stored
+**BUT if using above example**
+- if using postgresql table column insstead of collection(pgvector) to store metadata as JSONB: use `$` in front of metadata key `db.similarity_search_with_score(query, filter={"metadata.$key": "value"})`
+
+**Note about table stored vector**
+- PostgreSQL does not generate embeddings: You must use an embedding model to create the vector representation of your data.
+- PostgreSQL VECTOR(4096) column: This is simply a storage type for your pre-computed vectors; it does not perform any transformations on the data.
+- Use here ollama mistral:7b to change data into a vector before storing it in the db for example.
+
+
 ____________________________________________________
 
 # retrieve_relevant_vectors object returned:
@@ -1025,7 +1086,31 @@ def chat_prompt_creation(system_prompt: Dict[str, Any], human_prompt: Dict[str, 
     return chat_prompt
 ```
 
+## Final prompt structure will be:
+- simplification of prompt structure and uniformization
+```code
+# to simplify all prompts will have this structure and we will pull or fill what is needed for easy llm call
+<function_name>_prompt = {
+  "system": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+```
 
+# use of invoke using the prompt
+```python
+# where prompt_text is targetting what is needed eg: `prompt_text = <function_name>_prompt["system"]["template"]`
+response = llm.invoke(prompt_text)
+```
 
 ### Lot of confusion around prompt and errors: The following is from the doc, just follow that!!!
 
@@ -1248,6 +1333,27 @@ psql -U postgres -c "\du"
 psql -U postgres -d your_database_name -c "YOUR_SQL_QUERY_HERE"
 ```
 
+```bash
+# check collection creation:
+psql -U creditizens -d creditizens_vector_db -c "SELECT relname FROM pg_class WHERE relname = 'langgraph_collection_test';"
+```
+
+```bash
+# describe table structure:
+psql -U creditizens -d creditizens_vector_db -c "\d+ langgraph_collection_test"
+```
+
+```bash
+# check collection content:
+psql -U creditizens -d creditizens_vector_db -c "SELECT * FROM langgraph_collection_test LIMIT 10;"
+```
+
+```bash
+# check if collection has been created:
+psql -U creditizens -d creditizens_vector_db -c "SELECT relname FROM pg_class WHERE relname = 'langgraph_collection_test';"
+
+```
+
 #### psycopg2 (get also psycopg2-binary) security against SQL injection
 
 ```python
@@ -1258,10 +1364,115 @@ from psycopg2 import sql
 
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
-- test function that stores data in database
+- test function that stores data in database- OK
 - create all functions that each nodes will need (tools and other functions)
 - create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
 - See if you need function to get rid of DB info. Create the function that resets the db to zero and the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+
+## `os.system("<terminal command>")` vs subprocess
+- the `os.system("<terminal command>")`: only returns the exit status of the command, not the output of the command itself.
+
+- subprocess is going to be able to get the stdout and stderr
+eg:
+```python
+import subprocess
+
+result = subprocess.run(
+    ["psql", "-U", "creditizens", "-d", "creditizens_vector_db", "-c", "SELECT * FROM test_doc_recorded"],
+    capture_output=True,
+    text=True
+)
+
+print(result.stdout)
+```
+
+# RETURNED OUPUT FOR CERTAIN FUNCTIONS
+- eg.: Chunk size = 4000 `create_chunks_from_db_data(fetch_data_from_database, 4000)` 
+code```
+[
+  [
+    {'UUID': '0d3531c5-bf35-4e3b-b695-b2c2eaf9f22b', 'content': "To understand FNE thermoreceptors, you need to know about neurotransmission. The brain's signal strength relies on neuron firing frequency. We interact with objects at room temperature, which causes normal firing rates in thermoreceptors. However, cold or hot stimuli change the firing rate of their corresponding thermoreceptors."}, 
+    {'UUID': '112074b3-09e0-4759-b32e-c1df851fa219', 'content': "To understand FNE thermoreceptors, you need to know about neurotransmission. The brain's signal strength relies on neuron firing frequency. We interact with objects at room temperature, which causes normal firing rates in thermoreceptors. However, cold or hot stimuli alter the firing rate of their corresponding thermoreceptors."}, 
+    {'UUID': '1e6a1648-227f-4843-bf2b-7073a192f8cf', 'content': 'Thermoreceptors in the dermis are free nerve endings that detect temperature changes. They extend to the mid-epidermis and interact with extracellular stimuli. There are two types: cold and warm receptors, with varying concentrations throughout the body. A higher concentration in ears and face can cause excessive coldness in winter.'}, 
+    {'UUID': '240c0f7e-1d39-423c-b03d-91dc4aee8473', 'content': 'The challenge is converting thermal and kinetic energy into electrical signals for the brain. Receptors are key in signal transmission, and they play a massive role here as well.'}, 
+    {'UUID': '2fdd1c07-c465-4b5e-887b-d7856d179325', 'content': "Exploring the cellular and molecular mechanisms of temperature sensation goes beyond the average kinetic energy of substances. When you touch something cold, like an ice cube, how does your brain know it's cold? This involves understanding how the measure of kinetic energy is converted into signals that our brain can identify as cold.\n\nAt the molecular level, temperature sensation is mediated by ion channels in specialized nerve endings called nociceptors. These channels are sensitive to changes in temperature and open or close in response to these changes, allowing ions to flow in and out of the cell. This ion flow generates electrical signals that are transmitted to the brain, where they are interpreted as temperature sensations.\n\nOne example of a temperature-sensitive ion channel is TRPM8, which is activated by cold temperatures. When the temperature drops, TRPM8 channels open, allowing calcium ions to flow into the cell. This ion flow triggers a series of events that ultimately leads to the generation of an electrical signal that is transmitted to the brain.\n\nOverall, the cellular and molecular mechanisms of temperature sensation involve the detection of changes in kinetic energy by specialized ion channels in nerve endings, which convert these changes into electrical signals that are transmitted to the brain."},
+    {'UUID': '569ce0d4-d21e-4f7f-a8a3-ffc8c30a4e1e', 'content': 'The challenge is converting thermal and kinetic energy into electrical signals for the brain. Receptors are key in signal transmission, and they play a massive role here as well.'}, 
+    {'UUID': '583686a4-3708-4333-8507-1fe84adad58a', 'content': 'Perception of temperature is determined by the firing rates of cold and warm receptors. When touching an object between 5-30°C, cold receptor firing increases and warm receptor firing decreases, indicating cold. When touching an object between 30-45°C, warm receptor firing increases and cold receptor firing decreases, indicating warmth. If an object is hot enough to cause pain, nociceptors are activated, signaling pain and further indicating potential injury.'}, 
+    {'UUID': '625ccd1b-d646-4dd2-af2c-4e9ae6047074', 'content': 'The challenge is converting thermal and kinetic energy into electrical signals for the brain. Receptors are key in signal transmission, and they play a massive role here as well.'}, 
+    {'UUID': '6b9f21ed-2123-40e2-89ad-fa5ed55d8a87', 'content': 'TRP ion channels and temperature/chemical heat sources\n- TRPV1 receptor (warm receptor) responsible for burning sensation from capsaicin\n- Influx of sodium and calcium into nerve cells\n- Initiates firing of nerves signaling to brain\n- TRPM8 receptors conduct messages about cold stimuli'}, 
+    {'UUID': '7079049c-f4d3-47a3-af9c-9c660e801665', 'content': '`"Explaining a topic related to cellular and molecular biology is the goal today. This subject has recently begun to make sense after taking a course in this field."`'}, 
+    {'UUID': '775ee194-fe66-439a-b1b5-048f41bb0e58', 'content': '`"Explaining a topic related to cellular and molecular biology is the goal today. This subject has recently begun to make sense after taking a course in this field."`'}
+  ], 
+  [
+    {'UUID': '775ee194-fe66-439a-b1b5-048f41bb0e58', 'content': '`"Explaining a topic related to cellular and molecular biology is the goal today. This subject has recently begun to make sense after taking a course in this field."`'}, 
+    {'UUID': '78132fee-d8c0-40d0-ab0d-b813bb90b12b', 'content': 'Sure, let\'s discuss the "burning" sensation! It\'s important to note that this feeling is different from the "hot" sensation we previously covered. A burning sensation can be a sign of irritation or injury to the skin or mucous membranes. It can be caused by a variety of factors, such as exposure to chemicals, extreme temperatures, or certain medical conditions. If you\'re experiencing a burning sensation, it\'s important to identify the cause and seek appropriate treatment to prevent further damage.'}, 
+    {'UUID': '79612291-e138-486b-baaa-c3a20b7853db', 'content': 'Perception of temperature is determined by the firing rates of cold and warm receptors. When touching an object between 5-30°C, cold receptor firing increases and warm receptor firing decreases, indicating cold. When touching an object between 30-45°C, warm receptor firing increases and cold receptor firing decreases, indicating warmth. If an object is hot enough to cause pain, nociceptors are activated, signaling pain and further indicating potential injury.'}, 
+    {'UUID': '7ce310f6-fb52-4e99-9485-6ef31f0004e8', 'content': 'Thermoreceptors in the dermis are free nerve endings that extend to the mid-epidermis. They are not enclosed within a membrane, allowing them to detect physical stimuli through interactions with our skin. There are two types of thermoreceptors: cold and warm receptors, which can vary in concentration throughout the body. For example, the ears and face have a greater concentration of cold receptors, making them more susceptible to feeling cold in winter.'}, 
+    {'UUID': '7d14e6f1-54d6-4cd3-9946-96e9a377e05b', 'content': 'TRP ion channels and temperature perception | Source\n-------------------------------------------------\n\nTRP ion channels are sensitive to temperature and chemical heat sources, such as capsaicin in chilli peppers. The TRPV1 receptor, also known as the "warm receptor," is responsible for the burning sensation in the mouth caused by capsaicin. This receptor allows an influx of sodium and calcium into nerve cells, initiating the firing of nerves that signal to the brain that something is burning. Similarly, TRPM8 receptors conduct messages about cold stimuli when cooling agents like methanol bind to them. The ability of the body to perceive changes in temperature through these receptors is fascinating, as it demonstrates the body\'s ability to translate physical or chemical stimuli into signals that the brain can understand. For more information on other types of receptors that signal responses to physical stimuli, check out the following short video.'}, 
+    {'UUID': '8bfb6c93-9766-4fb5-aa68-cfb5cf7aa58a', 'content': 'Thermoreceptors in the dermis are free nerve endings that extend to the mid-epidermis. They are not enclosed within a membrane, allowing them to detect physical stimuli through interactions with our skin. There are two types of thermoreceptors: cold and warm receptors, which can vary in concentration throughout the body. For example, the ears and face have a greater concentration of cold receptors, making them more prone to feeling cold in winter.'}
+  ], 
+  [
+    {'UUID': '8bfb6c93-9766-4fb5-aa68-cfb5cf7aa58a', 'content': 'Thermoreceptors in the dermis are free nerve endings that extend to the mid-epidermis. They are not enclosed within a membrane, allowing them to detect physical stimuli through interactions with our skin. There are two types of thermoreceptors: cold and warm receptors, which can vary in concentration throughout the body. For example, the ears and face have a greater concentration of cold receptors, making them more prone to feeling cold in winter.'}, 
+    {'UUID': '8f038119-5328-4bcf-8c3f-fa6229c31a94', 'content': 'Sure, let\'s discuss the "burning" feeling you mentioned. It\'s possible that you\'re referring to a sensation of heat that is more intense and persistent than the typical warmth we feel. This type of heat can be caused by a variety of factors, such as inflammation, infection, or nerve damage.\n\nInflammation is a natural response of the body to injury or infection, and it can cause a localized increase in temperature, redness, and swelling. This is why we might feel a burning sensation when we have a cut or scrape that becomes infected.\n\nNerve damage can also cause a burning sensation, as damaged nerves may send incorrect signals to the brain. This is known as neuropathic pain, and it can be caused by conditions such as diabetes, shingles, or multiple sclerosis.\n\nRegardless of the cause, a burning sensation can be uncomfortable and even debilitating. If you\'re experiencing this type of heat, it\'s important to speak with a healthcare professional to determine the underlying cause and develop an appropriate treatment plan.'}, 
+    {'UUID': '98f1b511-bd03-43d6-93af-be88306cc4e8', 'content': 'Sure, let\'s discuss the "burning" feeling you mentioned. It\'s possible that you\'re referring to a sensation of heat that is more intense and persistent than the typical warmth we feel. This type of heat can be caused by a variety of factors, such as inflammation, infection, or nerve damage.\n\nInflammation is a natural response of the body to injury or infection, and it can cause a localized increase in temperature, redness, and swelling. This is why we might feel a burning sensation when we have a cut or scrape that becomes infected.\n\nNerve damage can also cause a burning sensation, as damaged nerves may send incorrect signals to the brain. This is known as neuropathic pain, and it can be caused by conditions such as diabetes, shingles, or multiple sclerosis.\n\nRegardless of the cause, a burning sensation can be uncomfortable and even debilitating. If you\'re experiencing this type of heat, it\'s important to speak with a healthcare professional to determine the underlying cause and develop an appropriate treatment plan.'}, 
+    {'UUID': 'aab58a62-2d9a-47ac-8d1b-e788e4318d35', 'content': "To understand FNE thermoreceptors, you need to know about neurotransmission. The brain's signal strength relies on neuron firing frequency. We interact with objects at room temperature, which causes normal firing rates in thermoreceptors. However, cold or hot stimuli alter the firing rate of their corresponding thermoreceptors."}
+  ], 
+  [
+    {'UUID': 'aab58a62-2d9a-47ac-8d1b-e788e4318d35', 'content': "To understand FNE thermoreceptors, you need to know about neurotransmission. The brain's signal strength relies on neuron firing frequency. We interact with objects at room temperature, which causes normal firing rates in thermoreceptors. However, cold or hot stimuli alter the firing rate of their corresponding thermoreceptors."}, 
+    {'UUID': 'bd5c4782-2a08-4185-93b2-a9d91bc08ee6', 'content': "Exploring the cellular and molecular mechanisms of temperature sensation goes beyond the average kinetic energy of substances. When you touch something cold, like an ice cube, how does your brain know it's cold? This involves understanding how the measure of kinetic energy is converted into signals that our brain can identify as cold.\n\nAt the molecular level, temperature sensation is mediated by ion channels in specialized nerve endings called nociceptors. These channels are sensitive to changes in temperature and open or close in response to these changes, allowing ions to flow in and out of the cell. This ion flow generates electrical signals that are transmitted to the brain, where they are interpreted as temperature sensations.\n\nOne example of a temperature-sensitive ion channel is the TRPM8 channel, which is activated by cold temperatures. When the temperature drops, the TRPM8 channel opens, allowing calcium ions to flow into the cell. This ion flow generates an electrical signal that is transmitted to the brain, signaling the sensation of cold.\n\nOverall, the cellular and molecular mechanisms of temperature sensation involve the activation of temperature-sensitive ion channels in specialized nerve endings, which convert changes in temperature into electrical signals that are transmitted to the brain."}, 
+    {'UUID': 'e38b458b-28e4-4e99-84e4-f8b0c16ad308', 'content': 'Temperature sensation involves intricate cellular and molecular mechanisms. High school chemistry explains the relationship between temperature and the average kinetic energy of molecules, but not how our brains sense and relay this information. The process of interpreting cold, such as when touching an ice cube, involves a series of cellular and molecular events that enable temperature perception.'}, 
+    {'UUID': 'e8ace0ea-0f00-4c7c-80a9-de593bcc1289', 'content': 'Perception of temperature is determined by the firing rates of cold and warm receptors. When touching an object between 5-30°C, cold receptor firing increases and warm receptor firing decreases, indicating cold. When touching an object between 30-45°C, warm receptor firing increases and cold receptor firing decreases, indicating warmth. If an object is hot enough to cause pain, nociceptors are activated, signaling pain and further indicating potential injury.'}, 
+    {'UUID': 'f00d1e2c-32ff-47ae-b17e-14f8fee12a76', 'content': '`"Explaining a topic related to cellular and molecular biology is the goal today. This subject has recently begun to make sense after taking a course in this field."`'}, 
+    {'UUID': 'f93afd2f-fc8e-44c2-9957-458fc837f26e', 'content': 'TRP ion channels are sensitive to temperature and chemical heat sources, such as capsaicin in chilli peppers. The TRPV1 receptor, also known as the "warm receptor," is responsible for the burning sensation in the mouth caused by capsaicin. This receptor allows an influx of sodium and calcium into nerve cells, initiating the firing of nerves that signal to the brain that something is burning. Similarly, TRPM8 receptors conduct messages about cold stimuli when cooling agents like methanol bind to them. The way we perceive changes in temperature is fascinating, as it involves the detection of small movements of molecules. For more information on other physical stimuli receptors, check out this short video.\n\nSource: <https://www.khanacademy.org/science/biology/human-biology/sensory-system/v/sensory-receptors-and-transduction>'}
+  ]
+]
+```
+
+# ERROR PSYCOPG2 CONNECTION
+- Need to be careful and close the connection of the db at the end of the workflow an
+```bash
+psycopg2.InterfaceError: connection already closed
+```
+
+- OR need to get rid of the conn parameter and put inside the function the connection to be opened
+```bash
+conn = connect_db()
+```
+
+- OR use a `try/except/finally` and do the whole stuff that needs to be done in the `try` and close the connection in the `finally`
+def fetch_documents(table_name: str) -> List[Dict[str, Any]]:
+    conn = connect_db()
+    try:
+        # Fetch data
+        # ...
+    finally:
+        conn.close()
+
+# ollama embeddings
+If using `ollama` for embeddings from `langchain.community` you need to find the `ollama.py` file in the virtual env and change the model for the one that you want to use for the embeddings. it is by default set to `llama2`
+- location: `/home/creditizens/langgraph/langgraph_venv/lib/python3.10/site-packages/langchain_community`
+- filename: `ollama.py`
+- approx. line number: `37`
+- change to be done: change `model: str = "llama2"` for `model: str = "mistral:7b"`
+
+if you omit that you can check if you want to install ollama and do embedding using its `pip` installation	
+
+
+# Next
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
+- test retrieval from data saved by our test.py
+- create all functions that each nodes will need (tools and other functions)
+- create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
+- See if you need function to get rid of DB info. Create the function that resets the db to zero - OK
+- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+
+
+
+
+
+
+
+
 
 
 

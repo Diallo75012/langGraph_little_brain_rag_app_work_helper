@@ -7,10 +7,11 @@
 import os
 import json
 import psycopg2
+from psycopg2 import sql
 import uuid
 from typing import List, Dict, Any
 from dotenv import load_dotenv
-from langchain_community.vectorstores.pgvector import PGVector
+from langchain_community.vectorstores.pgvector import PGVector, DistanceStrategy
 from langchain.docstore.document import Document
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain.chains import RetrievalQA
@@ -26,7 +27,7 @@ from typing import Dict, List
 load_dotenv()
 
 # Use Ollama to create embeddings
-embeddings = OllamaEmbeddings(temperature=0)
+embeddings = OllamaEmbeddings(model="mistral:7b", temperature=0)
 
 # DB CREATION
 def connect_db() -> psycopg2.extensions.connection:
@@ -110,19 +111,21 @@ def update_retrieved_status(doc_id: uuid.UUID):
     conn.close()
 
 # gets all documents from DB
-def fetch_documents() -> List[Dict[str, Any]]:
+def fetch_documents(table_name: str) -> List[Dict[str, Any]]:
     """Fetch documents from the PostgreSQL database."""
     conn = connect_db()
     cursor = conn.cursor()
     # here can customize using the extra columns that we have in the db and this will help create the object to embed
-    cursor.execute("SELECT id, doc_name, title, content FROM documents ORDER BY id")
+    #cursor.execute("SELECT id, doc_name, title, content FROM documents ORDER BY id")
+    cursor.execute(f"SELECT id, doc_name, title, content FROM {table_name} ORDER BY id")
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
-    return [{'id': row[0], 'content': row[1]} for row in rows]
+    return [{'id': row[0], 'content': row[3]} for row in rows]
 
 #### EMBED DOC IN PGVECTOR
 # Embeds the documents
-def vector_db_create(doc: List[Document], collection: str, connection: str) -> PGVector|dict:
+def vector_db_create(doc: List[Document], collection: str, connection: str, embeddings: OllamaEmbeddings = embeddings) -> PGVector|dict:
   try:
     """Create and store embeddings in PGVector."""
     db_create = PGVector.from_documents(
@@ -131,28 +134,33 @@ def vector_db_create(doc: List[Document], collection: str, connection: str) -> P
         collection_name=collection,
         connection_string=connection,
         distance_strategy=DistanceStrategy.COSINE,
+        #distance_strategy="cosine", # can be "eucledian", "hamming", "cosine"EUCLEDIAN, COSINE, HAMMING
     )
     return db_create
   except Exception as e:
-    return {"error": f"An error occured while trying to embed in vector db -> {e}"}
+    print(f"An error occurred while trying to embed in vector db -> {e}")
+    return {"error": f"An error occurred while trying to embed in vector db -> {e}"}
 
 # function that loops through docs to embed those one by one using the embeding function 'vector_db_create'
-def create_embedding_collection(all_docs: List[Document], collection_name: str, connection_string: str) -> None|dict:
+def create_embedding_collection(all_docs: List[Document], collection_name: str, connection_string: str, embeddings: OllamaEmbeddings = embeddings) -> None|dict:
   """Create an embedding collection in PGVector."""
   try:
-    vector_db_create([all_docs], collection_name, connection_string)
+    vector_db_create(all_docs, collection_name, connection_string, embeddings)
+    print("\n\nBatch doc embedding done!\n\n")
   except Exception as e:
     return {"error": f"An error occured while trying to create embeddings -> {e}"}
 
 # function that created custom document embedding object. Can be used to embed the full database or part of it after web/pdf parsing 
-def embed_all_db_documents(all_docs: List[Dict[str,Any]], collection_name: str, connection_string: str) -> None|dict:
+def embed_all_db_documents(all_docs: List[Dict[str,Any]], collection_name: str, connection_string: str, embeddings: OllamaEmbeddings = embeddings) -> None|dict:
   # Convert documents `all_docs` to langchain Document format (List)
   # `all_docs` here is a parameter that is representing our chunk that we want to embed it has the inofrmationof several rows
   docs = [Document(page_content=json.dumps(all_docs)),]
+  print("DOCS: ", docs)
 
   # embed all those documents in the vectore db
   try:
-    create_embedding_collection(docs, collection_name, connection_string)
+    create_embedding_collection(docs, collection_name, connection_string, embeddings)
+    return {"success": "Data has been successfully embedded."}
   except Exception as e:
     return {"error": f"An error occured while trying embed documents -> {e}"}
 
@@ -173,6 +181,8 @@ def vector_db_retrieve(collection: str, connection: str, embedding: OllamaEmbedd
 def retrieve_relevant_vectors(query: str, top_n: int = 3) -> List[Dict[str, Any]]:
     """Retrieve the most relevant vectors from PGVector."""
     db = vector_db_retrieve(COLLECTION_NAME, CONNECTION_STRING, embeddings)
+    
+    # Can search using metadata `key` using: db.similarity_search_with_score(query, filter={"metadata.key": "value"}) or  if using postgresql table column insstead of collection(pgvector) to store metadata as JSONB, use `$` in front of metadata key `db.similarity_search_with_score(query, filter={"metadata.$key": "value"})`
     docs_and_similarity_score = db.similarity_search_with_score(query)
     results = []
     # `docs` here is List[Document]
@@ -194,15 +204,71 @@ def fetch_document_by_uuid(doc_id: uuid.UUID) -> Dict[str, Any]:
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM documents WHERE id = %s", (doc_id,))
     row = cursor.fetchone()
+    cursor.close()
     conn.close()
     if row:
         return {'id': row[0], 'doc_name': row[1], 'title': row[2], 'content': row[3]}
     else:
         return {}
 
+#### DELETE TABLE TO DELETE THE COLLECTION
+# Delete All Rows from the Vector Table
+def clear_vector_table(table_name: str) -> str:
+    """
+    Clear all data from a table storing vector embeddings.
+    
+    Args:
+    table_name (str): The name of the table to clear.
+    conn (psycopg2.extensions.connection): The connection object to the PostgreSQL database.
+    
+    Returns:
+    str: A message indicating the result of the operation.
+    """
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        # Delete all rows from the table
+        cursor.execute(sql.SQL(f"DELETE FROM {table_name}"))
+        conn.commit()
+        return f"All rows in table '{table_name}' have been successfully deleted."
+    except Exception as e:
+        conn.rollback()
+        return f"Failed to clear table '{table_name}': {e}"
+    finally:
+        cursor.close()
+
+# Delete table entirely : bye bye table
+def delete_table(table_name: str):
+    """
+    Delete a table from the PostgreSQL database using psycopg2.
+    
+    Args:
+    table_name (str): The name of the table to delete.
+    """
+    # Establish a connection to the PostgreSQL database
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+    except Exception as e:
+        print(f"Failed to connect to the database: {e}")
+        return
+
+    # Delete the table if it exists
+    try:
+        cursor.execute(sql.SQL(f"DROP TABLE IF EXISTS {table_name};"))
+        conn.commit()
+        print(f"Table {table_name} deleted successfully.")
+    except Exception as e:
+        print(f"Failed to delete table {table_name}: {e}")
+        conn.rollback()  # Rollback in case of error for the current transaction
+    finally:
+        # Close the cursor and the connection
+        cursor.close()
+        conn.close()
+
 #### BUSINESS LOGIC OF RETIREVAL: goes to db qith query and get relevance score and then goes to the postgresql db to getthe rest of the row content to form a nice context for quality answer.
 def answer_retriever(query: str, relevance_score: float, top_n: int) -> List[Dict[str, Any]]:
-    """Retrieve answers using PGVector and ChatOllama."""
+    """Retrieve answers using PGVector"""
     relevant_vectors = retrieve_relevant_vectors(query, top_n)
     results = []
     for vector in relevant_vectors:
