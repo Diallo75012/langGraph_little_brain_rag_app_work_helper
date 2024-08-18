@@ -37,22 +37,34 @@ def get_query_hash(query: str) -> str:
 def cache_response(query: str, response: List[Dict[str, Any]], ttl: int = 3600) -> dict:
     """Cache the response in Redis with both hash and vector representation."""
     query_hash = get_query_hash(query)
-    query_vector = EMBEDDINGS.embed_text(query)
+    query_vector = EMBEDDINGS.embed_query(query)
 
     # Store with query hash as key
     REDIS_CLIENT.setex(query_hash, timedelta(seconds=ttl), json.dumps(response))
 
-    # Store with query vector as key (serialize vector)
-    vector_key = f"vector:{json.dumps(query_vector)}"
+    # Store with query vector as key but change it to tuple and hash it as vectors are list therefore mutable which makes it not hashable as list can change
+    query_vector_tuple = tuple(query_vector)
+    vector_key = f"vector:{json.dumps(query_vector_tuple)}"
     REDIS_CLIENT.setex(vector_key, timedelta(seconds=ttl), json.dumps(response))
     return {"query_hash": query_hash, "query_vector": query_vector}
 
 # exact match search fucntions
 def fetch_cached_response_by_hash(query: str) -> dict|List[Dict[str,Any]]|None:
     """Fetch the cached response from Redis using query hash if it exists."""
+    response = []
+    
+    # search using hash of query
     query_hash = get_query_hash(query)
-    data = REDIS_CLIENT.get(query_hash)
-    return json.loads(data) if data else None
+    data_from_query_hash = REDIS_CLIENT.get(query_hash)
+    if data_from_query_hash:
+      response.append(json.loads(data_from_query_hash) if data_from_query_hash else None)
+    # search using hash of vector of query
+    query_vector = EMBEDDINGS.embed_query(query)
+    hash_query_vector_tuple = hash(tuple(query_vector))
+    data_from_vector_hash = REDIS_CLIENT.get(hash_query_vector_tuple)
+    if data_from_vector_hash:
+      response.append(json.loads(data_from_vector_hash) if data_from_vector_hash else None)
+    return response
 
 def fetch_all_cached_embeddings() -> dict:
     """Fetch all cached embeddings from Redis."""
@@ -92,12 +104,12 @@ def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0
     return None
 
 # Vector search function with postgresql table update and caching of new retrieved content
-def perform_vector_search(query: str, score: float) -> List[Dict[str, Any]]:
+def perform_vector_search(query: str, score: float, top_n: int) -> List[Dict[str, Any]]:
 
   doc_ids = []
    
-  response = answer_retriever(query, 0.7, 4)
-  print(json.dumps(response, indent=4))
+  response = answer_retriever(query, score, top_n)
+  print("JSON RESPONSE: ", json.dumps(response, indent=4))
   for elem in response:
     doc_ids.append(elem["UUID"])
 
@@ -107,27 +119,39 @@ def perform_vector_search(query: str, score: float) -> List[Dict[str, Any]]:
     update_retrieved_status(doc_id)
 
   # then cache the query with the result content obtained in the hash way and the vectorized way
-  cache_response(query, response, ttl=3600) # 86400=1d, 3600=1h
+  cache_response(query, response, ttl=86400) # 86400=1d, 3600=1h
   return response
 
 #### This the meat function which does the exact match, then, semantic match, then the expensive vector database retireval and cache it if it finds anything for the response
-def handle_query_by_calling_cache_then_vectordb_if_fail(query: str, score: float) -> Dict[str, Any]:
+def handle_query_by_calling_cache_then_vectordb_if_fail(query: str, score: float, top_n: int) -> Dict[str, Any]:
     """Handle the user query by deciding between cache, semantic search, and vector search."""
+    
     # vectorize the query for semantic search
-    query_vectorized = EMBEDDINGS.embed_text(query)
-
+    query_vectorized = EMBEDDINGS.embed_query(query)
+    #print("Initial Query: ", query, "Query Vectorized: ", query_vectorized)
+    
     # Try to fetch from cache (Exact Query Match)
-    cached_response = fetch_cached_response_by_hash(query)
+    try:
+      # returns List[Dict]
+      cached_response = fetch_cached_response_by_hash(query)
+    except Exception as e:
+      print({"An error occured while trying to fetch cached response by hash": e})
     if cached_response:
         return {"exact_match_search_response_from_cache": cached_response}
 
     # Perform semantic search if exact query is not found
-    semantic_response = perform_semantic_search_in_redis(query_vectorized, score)
+    try:
+      semantic_response = perform_semantic_search_in_redis(query_vectorized, score)
+    except Exception as e:
+      print({"An error occured while trying to perform semantic search in redis": e})
     if semantic_response:
         return {"semantic_search_response_from_cache": semantic_response}
 
     # Perform vector search with score if semantic search is not relevant
-    vector_response = perform_vector_search(query, score)
+    try:
+      vector_response = perform_vector_search(query, score, top_n)
+    except Exception as e:
+      print({"An error occured while trying to perform vectordb search query": e})
     if vector_response:
         # Cache the new response with TTL
         cache_response(query, vector_response, ttl=3600)

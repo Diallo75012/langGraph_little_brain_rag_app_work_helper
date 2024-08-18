@@ -42,7 +42,13 @@ from lib_helpers.embedding_and_retrieval import (
 )
 import requests
 from bs4 import BeautifulSoup
-from app import process_query, is_url_or_pdf, store_dataframe_to_db, delete_table
+from app import (
+  process_query,
+  is_url_or_pdf,
+  store_dataframe_to_db, delete_table,
+  custom_chunk_and_embed_to_vectordb,
+  query_redis_cache_then_vecotrdb_if_no_cache
+)
 
 import subprocess
 
@@ -77,22 +83,56 @@ query_pdf = "I want to know if this documents docs/feel_temperature.pdf tells us
 #)
 
 #print("DATABASE CONTENT: ", result.stdout)
-print("EMBEDDINGS: ", embeddings)
+#print("EMBEDDINGS: ", embeddings)
 
-fetch_data_from_database = fetch_documents("test_doc_recorded")
-print("FETCH DATA FROM DATABASE: ", fetch_data_from_database, "\nLEN: ", len(fetch_data_from_database))
+#fetch_data_from_database = fetch_documents("test_doc_recorded")
+#print("FETCH DATA FROM DATABASE: ", fetch_data_from_database, "\nLEN: ", len(fetch_data_from_database))
 
-chunks = create_chunks_from_db_data(fetch_data_from_database, 4000)
-print("CHUNKS: ", chunks, "\nLEN: ", len(chunks))
+#chunks = create_chunks_from_db_data(fetch_data_from_database, 4000)
+#print("CHUNKS: ", chunks, "\nLEN: ", len(chunks))
 
-for chunk in chunks:
-  print("Chunk: ", chunk)
-  embed_all_db_documents(chunk, COLLECTION_NAME, CONNECTION_STRING, embeddings)
+#for chunk in chunks:
+  #print("Chunk: ", chunk)
+  #embed_all_db_documents(chunk, COLLECTION_NAME, CONNECTION_STRING, embeddings)
 
-#delete_db = delete_table("test_doc_recorded", conn)
+#delete_db = delete_table("test_doc_recorded")
 #print("DELETE DB: ", delete_db)
 
 
+
+
+
+#dataframe_from_query = process_query(groq_llm_mixtral_7b, query_url, 200, 30, 250, detect_content_type_prompt, summarize_text_prompt, generate_title_prompt)
+#print("DATAFRAME: ", dataframe_from_query)
+
+#store_dataframe_to_db = store_dataframe_to_db(dataframe_from_query[0], "test_table")
+#print("DB STORED DF: ", store_dataframe_to_db)
+
+#result = subprocess.run(
+#    ["psql", "-U", "creditizens", "-d", "creditizens_vector_db", "-c", "SELECT * FROM test_table"],
+#    capture_output=True,
+#    text=True
+#)
+#print("DATABASE CONTENT: ", result.stdout)
+"""
+Outputs:
+id                  |         doc_name          |                                title                                |                                                                                                                           content                                                                                                                            | retrieved 
+--------------------------------------+---------------------------+---------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-----------
+ 28902448-443b-41a8-8e35-e6e3cb571fa8 | https://chikarahouses.com | 'Elevate Home Life with Chikara: Shop, Play, Work, & AI Assistants' | Explore Chikara's social media rooms for shopping tours and AI assistant demos.                                                                                                                                                                             +| f
+                                      |                           |                                                                     | Track followers, sales, and enhance your lifestyle with Chikara Houses.                                                                                                                                                                                     +| 
+                                      |                           |                                                                     | [Shop Now](Shop Now!)| [Play & Work with AI](Amazing Chikara AI Assistants!)                                                                                                                                                                                 | 
+ 124d2bec-5a6d-4ba7-9180-94245e78cfad | https://chikarahouses.com | 'Chikara Houses: AI Tools & Shopping Rooms for Remote Pros'         | Explore AI tools by Chikara Houses in the Openai GPT store. Improve remote work and well-being with their GPTs. Visit their unique shopping rooms, too.                                                                                                      | f
+ 97a4b55f-8c22-4b97-bd20-cc245304b5ac | https://chikarahouses.com | "Elevate Home Life: Chikara Houses for Remote Pros & Wellness"      | Get exclusive access to [Different Collection Rooms](http://www.example.com/collectionrooms) for non-subscribers! Visit the description page to enhance your home specifically. Discover [intriguing stories and articles](http://www.example.com/articles). | f
+
+"""
+
+#chunk_and_embed_from_db_data = custom_chunk_and_embed_to_vectordb("test_table", 500, COLLECTION_NAME, CONNECTION_STRING)
+#print("CHUNK AND EMBED: ", chunk_and_embed_from_db_data)
+
+retrieve_data_from_query = query_redis_cache_then_vecotrdb_if_no_cache("What are the AI tools of Chikara Houses?", 0.3, 2)
+print("RETRIEVE DATA for query 'how to start monetize online presence?': ", retrieve_data_from_query)
+
+url_target_answer = "Explore AI tools by Chikara Houses in the Openai GPT store. Improve remote work and well-being with their GPTs. Visit their unique shopping rooms, too."
 
 
 

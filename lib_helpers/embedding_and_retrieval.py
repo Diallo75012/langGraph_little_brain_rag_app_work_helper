@@ -105,7 +105,8 @@ def update_retrieved_status(doc_id: uuid.UUID):
     """Update the retrieved status of the document in PostgreSQL."""
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("UPDATE documents SET retrieved = TRUE WHERE id = %s", (doc_id,))
+    # `doc_id` is a `uuid.UUID` and has to be passed as `str` for database sql query
+    cursor.execute("UPDATE documents SET retrieved = TRUE WHERE id = %s", (str(doc_id),))
     conn.commit()
     cursor.close()
     conn.close()
@@ -152,9 +153,9 @@ def create_embedding_collection(all_docs: List[Document], collection_name: str, 
 
 # function that created custom document embedding object. Can be used to embed the full database or part of it after web/pdf parsing 
 def embed_all_db_documents(all_docs: List[Dict[str,Any]], collection_name: str, connection_string: str, embeddings: OllamaEmbeddings = embeddings) -> None|dict:
-  # Convert documents `all_docs` to langchain Document format (List)
   # `all_docs` here is a parameter that is representing our chunk that we want to embed it has the inofrmationof several rows
-  docs = [Document(page_content=json.dumps(all_docs)),]
+  # `all_docs` is a `List[Dict[str,Any]]`
+  docs = [Document(page_content=json.dumps(all_doc)),]
   print("DOCS: ", docs)
 
   # embed all those documents in the vectore db
@@ -183,18 +184,21 @@ def retrieve_relevant_vectors(query: str, top_n: int = 3) -> List[Dict[str, Any]
     db = vector_db_retrieve(COLLECTION_NAME, CONNECTION_STRING, embeddings)
     
     # Can search using metadata `key` using: db.similarity_search_with_score(query, filter={"metadata.key": "value"}) or  if using postgresql table column insstead of collection(pgvector) to store metadata as JSONB, use `$` in front of metadata key `db.similarity_search_with_score(query, filter={"metadata.$key": "value"})`
+    # Here `docs_and_similarity_score` returns a `List[Tuple[Documents, score]]`
     docs_and_similarity_score = db.similarity_search_with_score(query)
+    print("Type docs_and_similarity_score: ", type(docs_and_similarity_score), "\nContent: ", docs_and_similarity_score)
     results = []
-    # `docs` here is List[Document]
-    for docs, score in docs_and_similarity_score[:top_n]:
-        # one doc store can ahve several chunk object in it which are dict with keys UUID and content
-        # here `elem` is a List[Dict[str,Any]]
-        for elem in docs:
-          data = json.loads(elem.page_content)
-          # here `info` is Dict[str,Any]
-          for info in data:
-            # we form an object dict that we want to collect from vector db with the relevant keys
+
+    # Iterate over each tuple in the result
+    for doc, score in docs_and_similarity_score[:top_n]:
+        # Parse the JSON content from the Document
+        data = json.loads(doc.page_content)
+        
+        # Iterate through the parsed JSON data to extract relevant info
+        for info in data:
+            # Append the extracted info to the results list
             results.append({'UUID': info['UUID'], 'content': info['content'], 'score': score})
+    
     return results
 
 # use the UUID of the retirved doc to fetch the postgresql database row and get extra infos from it later on, it is also to verify the qulity of embedding and catch errors if the content is different for example (at the beginning of dev work then when we are sure of the code we get rid of the checks, but we will definetly check thatthe content is the same from embedding to database row content.).
@@ -202,14 +206,16 @@ def fetch_document_by_uuid(doc_id: uuid.UUID) -> Dict[str, Any]:
     """Fetch the document content by UUID from the PostgreSQL database."""
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM documents WHERE id = %s", (doc_id,))
+    # doc_id is a uuid.UUID we need to pass in the query the `str` version of it
+    cursor.execute("SELECT * FROM documents WHERE id = %s", (str(doc_id),))
     row = cursor.fetchone()
+    print("ROW Found in DB: ", row)
     cursor.close()
     conn.close()
     if row:
         return {'id': row[0], 'doc_name': row[1], 'title': row[2], 'content': row[3]}
     else:
-        return {}
+        return {"Error": f"No row found in database for doc_id: {doc_id}"}
 
 #### DELETE TABLE TO DELETE THE COLLECTION
 # Delete All Rows from the Vector Table
@@ -270,21 +276,22 @@ def delete_table(table_name: str):
 def answer_retriever(query: str, relevance_score: float, top_n: int) -> List[Dict[str, Any]]:
     """Retrieve answers using PGVector"""
     relevant_vectors = retrieve_relevant_vectors(query, top_n)
+    print("Type relevant_vectors: ", type(relevant_vectors), "\nContent: ", relevant_vectors)
     results = []
     for vector in relevant_vectors:
       if vector["score"] > relevance_score:
-        print("Vector: ", vector, ", Vectore score: ", vector["score"], f" vs relevant score: {relevant_score}")
-        for doc in vector:
-          print("Doc: ", doc)
-          doc_id = uuid.UUID(doc['UUID'])
+        print("Vector: ", vector, ", Vectore score: ", vector["score"], f" vs relevant score: {relevance_score}")
+        #for doc in vector:
+        print("Vector: ", vector)
+        doc_id = vector['UUID']
           # here document will be a dict with keys: id, doc_name, title, content coming from the postgresql db, saved in the dict with key raw_data
-          document = fetch_document_by_uuid(doc_id)
-          results.append({
-            'UUID': doc['UUID'],
-            'score': doc['score'],
-            'content': doc['content'],
+        document = fetch_document_by_uuid(doc_id)
+        results.append({
+            'UUID': vector['UUID'],
+            'score': vector['score'],
+            'content': vector['content'],
             'row_data': document # document is a Dict with id, doc_name, title, content as key (full db row)
-          })
+        })
     return results
 
 

@@ -1354,6 +1354,22 @@ psql -U creditizens -d creditizens_vector_db -c "SELECT relname FROM pg_class WH
 
 ```
 
+```bash
+# delete all content from some tables, can add `CASCADE` at the end if thsoe tabled have foreign keys
+TRUNCATE TABLE documents, langchain_pg_collection, langchain_pg_embedding;
+```
+
+```bash
+# list users
+\du
+# list databases
+\l
+# select database
+\c creditizens_vector_db;
+# list for tables in that db
+\dt
+```
+
 #### psycopg2 (get also psycopg2-binary) security against SQL injection
 
 ```python
@@ -1460,7 +1476,7 @@ if you omit that you can check if you want to install ollama and do embedding us
 
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
-- test retrieval from data saved by our test.py
+- test retrieval from data saved by our test.py OK
 - create all functions that each nodes will need (tools and other functions)
 - create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
 - See if you need function to get rid of DB info. Create the function that resets the db to zero - OK
@@ -1469,12 +1485,46 @@ if you omit that you can check if you want to install ollama and do embedding us
 
 
 
+8b4a37ce-0e43-4b40-aa05-79c09d07e48d | docs/feel_temperature.pdf | 'Decoding ld?: A Cellular & Molecular Perspective'                                                                                                                                                                                                                                                                                                                                  | `"Explaining a topic related to cellular and molecular biology is the goal today. This subject has recently begun to make sense after taking a course in this field."`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+
+ d9472503-1aaa-41f3-bc16-329617b091e9 | docs/feel_temperature.pdf | "Converting Temperature to Electric Signals: Thermoreceptor Function"                                                                                                                                                                                                                                                                                                                 | The challenge is converting thermal and kinetic energy into electrical signals for the brain. Receptors are key in transmitting signals, and here's no exception. They play a massive role in receiving and transmitting temperature information.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | f
+
+ 18237035-48d0-490f-8d23-80f609d932bd | docs/feel_temperature.pdf | "Thermoreceptors in Skin: Free Nerve Endings for Heat & Cold"                                                                                                                                                                                                                                                                                                                         | Thermoreceptors in the dermis are free nerve endings that extend to the mid-epidermis. They are not enclosed within a membrane, allowing them to detect physical stimuli through interactions with our skin. There are two types of thermoreceptors: cold and warm receptors, which can vary in concentration throughout the body. For example, the ears and face have a greater concentration of cold receptors, making them more susceptible to feeling cold in winter.
+
+List[Tuple[Documents, score]]
+[
+ (
+ Document(
+   page_content=
+     '[
+       {"UUID": "124d2bec-5a6d-4ba7-9180-94245e78cfad", "content": "Explore AI tools by Chikara Houses in the Openai GPT store. Improve remote work and well-being with their GPTs. Visit their unique shopping rooms, too."},
+       {"UUID": "28902448-443b-41a8-8e35-e6e3cb571fa8", "content": "Explore Chikara\'s social media rooms for shopping tours and AI assistant demos.\\nTrack followers, sales, and enhance your lifestyle with Chikara Houses.\\n[Shop Now](Shop Now!)| [Play & Work with AI](Amazing Chikara AI Assistants!)"
+       }
+     ]'
+   ), 
+   0.584969858173907
+ ),
+ (
+ Document(
+   page_content=
+     '[
+       {"UUID": "28902448-443b-41a8-8e35-e6e3cb571fa8", "content": "Explore Chikara\'s social media rooms for shopping tours and AI assistant demos.\\nTrack followers, sales, and enhance your lifestyle with Chikara Houses.\\n[Shop Now](Shop Now!)| [Play & Work with AI](Amazing Chikara AI Assistants!)"},
+       {"UUID": "97a4b55f-8c22-4b97-bd20-cc245304b5ac", "content": "Get exclusive access to [Different Collection Rooms](http://www.example.com/collectionrooms) for non-subscribers! Visit the description page to enhance your home specifically. Discover [intriguing stories and articles](http://www.example.com/articles)."
+       }
+     ]'
+   ),
+   0.6058349904951864
+ )
+]
 
 
-
-
-
-
+# Next
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
+- data saved to adb and workflow fine but need now to work on the redis cache retrieval part and vectordb search and falldown to a internet search with a separate func for next agent
+- create all functions that each nodes will need (tools and other functions)
+- create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
+- See if you need function to get rid of DB info. Create the function that resets the db to zero - OK
+- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
 
 
 

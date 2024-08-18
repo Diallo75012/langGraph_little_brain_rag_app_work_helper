@@ -1,5 +1,6 @@
 import os
 import time
+import json
 # For str to dict
 import ast
 import re
@@ -538,7 +539,7 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
     return {"error": f"An error occured while trying to fetch rows from db -> {e}"}
   # here we get List[List[Dict[str,Any]]]
   try:
-    # chunk will be formatted only with uuid and content: `{'UUID': str(doc_id), 'content': content}`
+    # chunk will be formatted only with uuid and content: `{'UUID': str(doc_id), 'content': content}` but here it is a `List[List[Dict[str,Any]]]`
     chunks = create_chunks_from_db_data(rows, chunk_size)
   except Exception as e:
     conn.close()
@@ -546,6 +547,7 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
   # here we create the custom document and embed it
   try:
     for chunk_list in chunks:
+      # here chunk_list is a `List[Dict[str,Any]]`
       embed_all_db_documents(chunk_list, COLLECTION_NAME, CONNECTION_STRING) 
   except Exception as e:
     conn.close()
@@ -563,17 +565,21 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
 
 ## 4- FETCH QUERY FROM REDIS CACHE, IF NOT FOUND ONLY THEN DO A VECTOR RETRIEVAL FROM VECTORDB
 
-def query_redis_cache_then_vecotrdb_if_no_cache(query: str, score: float) -> List[Dict[str,Any]] | str:
-  response = handle_query_by_calling_cache_then_vectordb_if_fail(query, score)
-  print(json.dumps(response, indent=4))
+def query_redis_cache_then_vecotrdb_if_no_cache(query: str, score: float, top_n: int) -> List[Dict[str,Any]] | str:
+  try:
+    response = handle_query_by_calling_cache_then_vectordb_if_fail(query, score, top_n)
+  except Exception as e:
+    return f"An error occured while trying to handle query by calling cache then vectordb if nothing found: {e}"
+
+  print("RESPONSE CACHE OR VDB: ", json.dumps(response, indent=4))
   if response["exact_match_search_response_from_cache"]: 
-    exact_match_response = json.loads(response["exact_match_search_response_from_cache"])
+    exact_match_response = response["exact_match_search_response_from_cache"]
     return exact_match_response
   elif response["semantic_search_response_from_cache"]: 
-    semantic_response = json.loads(response["semantic_search_response_from_cache"])
+    semantic_response = response["semantic_search_response_from_cache"]
     return semantic_response
   elif response["vector_search_response_after_cache_failed_to_find"]:
-    vector_response = json.loads(response["vector_search_response_after_cache_failed_to_find"])
+    vector_response = response["vector_search_response_after_cache_failed_to_find"]
     return vector_response
   elif response["message"]:
     print(response["message"])
