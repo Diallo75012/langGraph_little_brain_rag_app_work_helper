@@ -203,12 +203,13 @@ def handle_query_by_calling_cache_then_vectordb_if_fail(table_name: str, query: 
         vector_response = perform_vector_search(table_name, query, score, top_n)
         print("Cache had nothing, therefore, performing vectordb search, response: ", vector_response)
         if vector_response:
-            return {"vector_search_response_after_cache_failed_to_find": vector_response}
             # Cache the new response with TTL
             try:
               cache_response(query, vector_response, ttl=3600)
             except Exception as e:
               return {"error": f"An error occured while trying to cache the vector search response: {e}"}
+      
+            return {"vector_search_response_after_cache_failed_to_find": vector_response}
       except Exception as e:
         print(f"An error occured while trying to perform vectordb search query {e}")
         return {"error": f"An error occured while trying to perform vectordb search query: {e}"}

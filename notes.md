@@ -425,7 +425,7 @@ next: This is a tuple of the nodes to execute next in the graph.
 ```python
 from langgraph.checkpoint import MemorySaver
 checkpointer = MemorySaver()
-# Note that we're (optionally) passing the memory when compiling the graph but better  for sophisticated wrokflows like ones including breakpoints
+# Note that we're (optionally) passing the memory when compiling the graph but better for sophisticated workflows like ones including breakpoints
 app = workflow.compile(checkpointer=checkpointer)
 ```
 
@@ -570,7 +570,7 @@ Do you want to go to Step 3? (yes/no):
 
 #### `astream_events`
 This is to stream event like llm calls and token tracking while those are being called inside nodes.
-In the codumentation examples this is used for async functions
+In the documentation examples this is used for async functions
 
 
 # LangGraph ReAct Agent
@@ -1564,19 +1564,219 @@ docker run --name pgvector-container -e POSTGRES_USER=langchain -e POSTGRES_PASS
 - reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
 
 
+# PROMPTS TEMPLATE AND LLM CALL
+
+### we will use this format of prompt template and will fill it depending of which kind of llm call we need to perform using this format: `<name_of_function>_prompt`
+```python
+<name_of_function>_prompt = {
+  "system": {
+    "template": "Answer putting text in markdown tags ```markdown ``` using no more than {maximum} characters to summarize this: {row['text']}.", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+```
+
+### we will use this function to see if we are calling llm using question/answer only or chat version system/human/ai
+```python
+def make_normal_or_chat_prompt_chain_call(llm_client, prompt_input_variables_part: Dict, prompt_template_part: Optional[Dict], chat_prompt_template: Optional[Dict]):
+  
+  # default prompt question/answer
+  if prompt_template_part:
+    prompt = (
+      PromptTemplate.from_template(prompt_template_part)
+    )
+    response = call_chain(llm_client, prompt, prompt_input_variables_part, {})
+    return response
+  
+  # chat prompts question/answer system/human/ai
+  elif chat_prompt_template:
+    prompt = (
+      SystemMessage(content=chat_prompt_template["system"]["template"]) + HumanMessage(content=chat_prompt_template["human"]["template"]) + AIMessage(content=chat_prompt_template["ai"]["template"])
+    )
+    response = call_chain(llm_client, prompt, {}, {"system": chat_prompt_template["system"]["input_variables"], "human": chat_prompt_template["human"]["input_variables"], "ai": chat_prompt_template["ai"]["input_variables"]})
+    return response
+  return {'error': "An error occured while trying to create prompts. You must provide either: `prompt_template_part` with `prompt_input_variables_part` or `chat_prompt_template` - in combinaison with llm_client which is always needed." }
+```
+
+### Then the llm calling function will call the llm in different way (formatting the call as needed)
+```python
+def call_chain(model: ChatGroq, prompt: PromptTemplate, prompt_input_vars: Optional[Dict], prompt_chat_input_vars: Optional[Dict]):
+  # only to concatenate all input vars for the system/human/ai chat
+  chat_input_vars_dict = {}
+  for k, v in prompt_chat_input_vars.items():
+    for key, value in v.items():
+      chat_input_vars_dict[key] = value
+  print("Chat input vars: ",  chat_input_vars_dict)
+
+  # default question/answer
+  if prompt and prompt_input_vars:
+    print("Input variables found: ", prompt_input_vars)
+    chain = ( prompt | model )
+    response = chain.invoke(prompt_input_vars)
+    print("Response: ", response, type(response))
+    return response.content.split("```")[1].strip("markdown").strip()
+    
+  # special for chat system/human/ai
+  elif prompt and prompt_chat_input_vars:
+    print("Chat input variables found: ", prompt_chat_input_vars)
+    chain = ( prompt | model )
+    response = chain.invoke(chat_input_vars_dict)
+    print("Response: ", response, type(response))
+    return response.content.split("```")[1].strip("markdown").strip()
+```
+**Step of the prompt template use for llm call:**
+.1 import the right prompt template normal question/response or chat special system/human/aione
+.2 use the template and the function argument to create the prompt
+.3 use make_normal_or_chat_prompt_chain_call(llm_client, prompt_input_variables_part: Dict, prompt_template_part: Optional[Dict], chat_prompt_template: Optional[Dict])
+.4 use internet search tool if nothing is found or go to the internet search node
+
+Eg.:
+```python
+from prompts.prompts import test_prompt_tokyo, test_prompt_siberia, test_prompt_monaco, test_prompt_dakar
+
+print("SIBERIA: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_siberia["input_variables"], test_prompt_siberia["template"], {}))
+time.sleep(0.5)
+print("TOKYO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, test_prompt_tokyo["input_variables"], test_prompt_tokyo["template"], {}))
+time.sleep(0.5)
+print("DAKAR: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_dakar))
+time.sleep(0.5)
+print("MONACO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}, {}, test_prompt_monaco))
+
+'''
+# prompts that also fit the function as question/answer but we have decided to use to next example one to have same template and use or fill what is needed from it
+test_prompt_siberia = {"template": "What is the weather like in {test_var} usually.\nAnswer only with the schema in markdown between ```markdown ```.", "input_variables": {"test_var": "Siberia"}}
+test_prompt_tokyo = {"template": "We is the weather like in Japan in summer usually.\nAnswer only with the schema in markdown between ```markdown ```.", "input_variables": {}}
+
+# Prompt System/Human/Ai that will be used from now on for all prompts
+test_prompt_dakar = {
+  "system": {
+    "template": "You are an expert in climat change and will help by answering questions only about climat change. If any other subject is mentioned, you must answer that you don't know as you are only expert in climat change related questions.\nAnswer only with the schema in markdown between ```markdown ```.", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "I need two know if Dakar is going to struggle in the future beacause of the rise of ocean water level due to global warming? {format_of_answer}", 
+    "input_variables": {"format_of_answer": "Format your answer please using only one sentence and three extra bullet points."}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+test_prompt_monaco = {
+  "system": {
+    "template": "You are an expert in climat change and will help by answering questions only about climat change. If any other subject is mentioned, you must answer that you don't know as you are only expert in climat change related questions.\nAnswer only with the schema in markdown between ```markdown ```.", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "I am following F1 and want to know when is the next Monaco GP and will {car_house} win again?", 
+    "input_variables": {"car_house": "Ferrari"}
+  },
+  "ai": {
+    "template": "I believe that Renault will win next {city} GP", 
+    "input_variables": {"city": "Singapour"}
+  },
+}
+'''
+```
+
+**Now We have a prompt template and will use the same and will call llms using this kind of example if AI message is needed if will be added but in this example we use just human and system message**
+
+##### prompt template
+```code
+<function_name>_prompt = {
+  "system": {
+    "template": """
+      <system_message_template_with_or_without_input_variables>
+      """, 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+```
+
+##### formatting llm call taking what is needed from the imported prompt template
+```python
+system_message_tuple = ("system",) + (prompt["system"]["template"],)
+human_message_tuple = ("human",) + (query.strip(),)
+messages = [system_message_tuple, human_message_tuple]
+
+llm_called = llm.invoke(messages)
+
+llm_called_answer = llm_called.content.split("```")[1].strip("markdown").strip()
+```
 
 
 
+### list of function for node or tool:
+#### 1) User initial query management and files or url if exist
+- process_query: returns tuple (df_final, content_dict) : will decompose user query and create df of url or pdf OR returns Dict[str,str] {message: user query text to answer to as no url/pdf processing needed}
+state saved: question/pdf or question/url or text and webpage or url df
+
+- store_dataframe_to_db: returns Dict[str, str] {error/success: message}
+state saved: df saved bool True/False
+custom_chunk_and_embed_to_vectordb: returns Dict[str, str] {error/success: message}
+state saved: db data chunked and embedded bool True/False
+
+#### 2) Query Retrieval
+- query_redis_cache_then_vecotrdb_if_no_cache: returns List[Dict[str,Any]] | str | Dict[str,str] -->
+  - List[Dict[str,Any]] is found answer cache/vectordb; 
+  - str if nothing found;
+  - Dict[str,str] if error {error:message}
+state saved: retrieved redis or vectordb -->
+  - query hash retrieved List[DICT[str,Any]]
+  - query vector retrieved List[DICT[str,Any]]
+  - vectordb retrieved List[DICT[str,Any]]
+  - nothing retrieved: bool
+ 
+#### Extras
+- delete_table
+- subprocess function to run code safely in docker tools
 
 
+### Format of how to make tools
+# tool template
+class <name_arg_template>(BaseModel):
+      <arg_name>: <input_type> = Field(default=<default_value>, description="<description>")
 
+def <func_name>(<arg_name>: <input_type> = <default_value_if_any>) -> <return_type>:
+  """
+    <func description> 
+    
+    Parameter: 
+    <arg_name> <input_type> : '<descrption>' = {<default_value_if_any>}
+    
+    Returns: 
+    <return_type> <description> 
+  """
+  <func_logic>
+  return <returned_object_stuff>
 
-
-
-
-
-
-
+<var_tool_name> = StructuredTool.from_function(
+  func=<func_name>,
+  name="<name_of_tool>",
+  description=  """
+    <description_of_tool>
+  """,
+  args_schema=<name_arg_template>,
+  # return_direct=True, # returns tool output only if no TollException raised
+  # coroutine= ... <- you can specify an async method if desired as well
+  # callback==callback_function # will run after task is completed
+)
 
 
 

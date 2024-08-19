@@ -14,11 +14,17 @@ import subprocess
 # for dataframe
 import pandas as pd
 from uuid import uuid4
-# for typing func parameters and outputs
+# for typing func parameters and outputs and states
 from typing import Literal, TypedDict, Dict, List, Tuple, Any, Optional
+from pydantic import BaseModel
 # for llm call with func or tool and prompts formatting
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
+from langchain_community.tools import (
+  # Run vs Results: Results have more information
+  DuckDuckGoSearchRun,
+  DuckDuckGoSearchResults
+) 
 from langchain_core.messages import (
   AIMessage,
   HumanMessage,
@@ -71,14 +77,22 @@ from lib_helpers.embedding_and_retrieval import (
   COLLECTION_NAME,
   CONNECTION_STRING,
   update_retrieved_status,
-  clear_cache, cache_document,
+  clear_cache,
+  delete_table,
+  cache_document,
   redis_client,
   create_table_if_not_exists,
   connect_db,
   embeddings
 )
 # STATES
-from graph_states import ParseDocuments
+from states.graph_states import (
+  ParseDocuments,
+  DetectContentState,
+  StoreDftodbState,
+  ChunkAndEmbedDbdataState,
+  RetrievedRedisVectordb
+)
 # DOCKER REMOTE CODE EXECUTION
 # eg.: print(run_script_in_docker("test_dockerfile", "./app.py"))
 from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker # returns `Tuple[str, str]` stdout,stderr
@@ -389,24 +403,39 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
 
 ## 1- IDENTIFY IF QUERY IS FOR A PFD OR A WEB PAGE
 # Main function to process the user query and return pandas dataframe and the user query dictionary structured by llm. here df_final will have chunks already done! cool!
-def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int], detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt) -> Tuple:
+def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int], detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt) -> Tuple | Dict:
     # use of detect_content_type from `query_analyzer_module`
     content_str = detect_content_type(llm, query, detect_prompt_template)
     content_dict = string_to_dict(content_str)
+    
+    # update state to keep the reformulated query and use it later
+    if content_dict["question"]:
+      DetectContentState.question = content_dict["question"]
+    
     # print content to see how it looks like, will it getthe filename if pdf or the full correct url if url...
     print("content_dict: ", content_dict)
     if content_dict["pdf"] and is_url_or_pdf(content_dict["pdf"].strip()) == "pdf":
+        # update state doc type
+        DetectContentState.doc_type = content_dict["pdf"]
         is_url = False
         # functions from `lib_helpers.pdf_parser`(for pdf we increase a bit the content lenght accepted and the chunk size)
         df_final = get_final_df(llm, is_url, content_dict["pdf"].strip(), maximum_content_length + 200, maximum_title_length, chunk_size + 150, text_summary_prompt, title_summary_prompt)
+        # save df to state
+        ParseDocuments.pdf_parsed_dataframe_state = df_final
     elif content_dict["url"] and is_url_or_pdf(content_dict["url"].strip()) == "url":
+        # update state doc type
+        DetectContentState.doc_type = content_dict["url"]
         is_url = True
         # just for text to see if `is_url_or_pdf` func works as expected
         #return is_url
         # functions from `lib_helpers.webpage_parser`
         df_final = get_final_df(llm, is_url, content_dict["url"].strip(), maximum_content_length, maximum_title_length, chunk_size, text_summary_prompt, title_summary_prompt)
+        # save df to state
+        ParseDocuments.url_parsed_dataframe_state = df_final
     else:
-        return f"No PDF nor URL found in the query. Content: {content_dict}"
+        # update state no_doc_but_text (thismeans that it is just a questiont hat can be answers combining llm answer and internet search for example)
+        DetectContentState.no_doc_but_simple_query_text = content_dict["text"]        
+        return {"message": f"No PDF nor URL found in the query. Content: {content_dict}. Therefore just answer to this user query: {content_dict['text']}"}
     
     return df_final, content_dict
 
@@ -416,7 +445,7 @@ def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximu
 store dataframe to DB by creating a custom table and by activating pgvector and insering the dataframe rows in it
 so here we will have different tables in the database (`conn`) so we will have the flexibility to delete the table entirely if not needed anymore
 """
-def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str):
+def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str) -> Dict[str, str]:
     """
     Store a pandas DataFrame to a PostgreSQL table using psycopg2, avoiding duplicate records.
     
@@ -430,12 +459,13 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str):
         cursor = conn.cursor()
     except Exception as e:
         print(f"Failed to connect to the database: {e}")
-        return
+        StoreDftodbState.df_stored = False
+        return {"error": f"An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}
 
     # Ensure the table exists, if not, create it
     try:
-        cursor.execute(sql.SQL(f"""
-            CREATE TABLE IF NOT EXISTS {table_name} (
+        cursor.execute(sql.SQL("""
+            CREATE TABLE IF NOT EXISTS {} (
                 id UUID PRIMARY KEY,
                 doc_name TEXT,
                 title TEXT,
@@ -448,37 +478,37 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str):
         print(f"Failed to create table {table_name}: {e}")
         cursor.close()
         conn.close()
-        return
+        StoreDftodbState.df_stored = False
+        return {"error": f"An error occured while trying to 'create table if exist': {e}"}
 
     # Ensure pgvector extension is available
     try:
-        cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        cursor.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS vector;"))
         conn.commit()
     except Exception as e:
         print(f"Failed to enable pgvector extension: {e}")
         cursor.close()
         conn.close()
-        return
+        StoreDftodbState.df_stored = False
+        return {"error": f"An error occured while trying to 'create extention vector in db': {e}"}
 
     # Insert data into the table row by row, avoiding duplicates
     for index, row in df_final.iterrows():
         try:
             # Check if the content already exists in the table
             cursor.execute(sql.SQL(f"""
-                SELECT COUNT(*) FROM {table_name}
-                WHERE doc_name = %s AND content = %s;
-            """), 
-            (row['doc_name'], row['content']))
+                SELECT COUNT(*) FROM {}
+                WHERE doc_name = {} AND content = {};
+            """).format(sql.Identifier(table_name), sql.Identifier(row["doc_name"]), sql.Identifier(row["content"])))
             
             count = cursor.fetchone()[0]
             
             if count == 0:
                 # If no duplicate found, insert the row
-                cursor.execute(sql.SQL(f"""
-                    INSERT INTO {table_name} (id, doc_name, title, content, retrieved)
-                    VALUES (%s, %s, %s, %s, %s)
-                """),
-                (row['id'], row['doc_name'], row['title'], row['content'], row['retrieved']))
+                cursor.execute(sql.SQL("""
+                    INSERT INTO {} (id, doc_name, title, content, retrieved)
+                    VALUES ({}, {}, {}, {}, {})
+                """).format(sql.Identifier(table_name), sql.Identifier(row["id"]), sql.Identifier(row["doc_name"]), sql.Identifier(row["title"]), sql.Identifier(row["content"]), sql.Identifier(row["retrieved"])))
                 conn.commit()  # Commit the transaction if successful
             else:
                 print(f"Duplicate found for doc_name: {row['doc_name']}, content: {row['content']}. Skipping insertion.")
@@ -486,56 +516,30 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str):
         except Exception as e:
             print(f"Error inserting row {index}: {e}")
             conn.rollback()  # Rollback in case of error for the current transaction
+            StoreDftodbState.df_stored = False
+            return {"success": f"An error occured while trying to insert data in db: {e}"}
 
     # Close the cursor and the connection
     cursor.close()
     conn.close()
 
     print("DataFrame successfully stored in the database.")
-        
-    return f"Document quality data saved to PostgreSQL database table: {table_name}"
-
-
-# function to delete table hat can be used as a tool
-def delete_table(table_name: str):
-    """
-    Delete a table from the PostgreSQL database using psycopg2.
-    
-    Args:
-    table_name (str): The name of the table to delete.
-    """
-    # Establish a connection to the PostgreSQL database
-    try:
-        conn = connect_db()
-        cursor = conn.cursor()
-    except Exception as e:
-        print(f"Failed to connect to the database: {e}")
-        return
-
-    # Delete the table if it exists
-    try:
-        cursor.execute(sql.SQL(f"DROP TABLE IF EXISTS {table_name};"))
-        conn.commit()
-        print(f"Table {table_name} deleted successfully.")
-    except Exception as e:
-        print(f"Failed to delete table {table_name}: {e}")
-        conn.rollback()  # Rollback in case of error for the current transaction
-    finally:
-        # Close the cursor and the connection
-        cursor.close()
-        conn.close()
+    StoreDftodbState.df_stored = True
+    return {"success": f"Document quality data saved to PostgreSQL database table: {table_name}"}
 
 
 ## 3- EMBED ALL DATABASE SAVED DOC DATA TO VECTORDB
 # `COLLECTION_NAME` and `CONNECTION_STRING` should be recognized as it comes from 'lib_helpers.embedding_and_retrieval'
-def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECTION_NAME: str, CONNECTION_STRING: str) -> dict:
+def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECTION_NAME: str, CONNECTION_STRING: str) -> Dict[str, str]:
   # Embed all documents in the database
   # function from module `lib_helpers.embedding_and_retrieval`
   # here we get List[Dict[str,Any]]
   try:  
     rows = fetch_documents(table_name)
   except Exception as e:
-    conn.close()  
+    conn.close()
+    # update state
+    ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = False
     return {"error": f"An error occured while trying to fetch rows from db -> {e}"}
   # here we get List[List[Dict[str,Any]]]
   try:
@@ -543,6 +547,8 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
     chunks = create_chunks_from_db_data(rows, chunk_size)
   except Exception as e:
     conn.close()
+    # update state
+    ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = False
     return {"error": f"An error occured while trying to create chunks -> {e}"}
   # here we create the custom document and embed it
   try:
@@ -551,9 +557,14 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
       embed_all_db_documents(chunk_list, COLLECTION_NAME, CONNECTION_STRING) 
   except Exception as e:
     conn.close()
+    # update state
+    ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = False
     return {"error": f"An error occured while trying to create custom docs and embed it -> {e}"}
   
-  conn.close()    
+  conn.close()
+  # update state
+  ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = True
+  
   return {"success": "database data fully embedded to vectordb"}
     
 
@@ -565,7 +576,7 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
 
 ## 4- FETCH QUERY FROM REDIS CACHE, IF NOT FOUND ONLY THEN DO A VECTOR RETRIEVAL FROM VECTORDB
 
-def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, score: float, top_n: int) -> List[Dict[str,Any]] | str:
+def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, score: float, top_n: int) -> List[Dict[str,Any]] | str | Dict[str,str]:
 
   try:
     response = handle_query_by_calling_cache_then_vectordb_if_fail(table_name, query, score, top_n)
@@ -577,29 +588,38 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
       # here the redis response from hashed query matching
       if "exact_match_search_response_from_cache" in response: 
         exact_match_response = response["exact_match_search_response_from_cache"]
+        # List[Dict[str,Any]]
+        RetrievedRedisVectordb.query_hash_retrieved = exact_match_response
         return exact_match_response
 
       # here the redis response from semantic search on stored embeddings as no hashed query matched to get an answer
       elif "semantic_search_response_from_cache" in response: 
         semantic_response = response["semantic_search_response_from_cache"]
+        # List[Dict[str,Any]]
+        RetrievedRedisVectordb.query_vector_hash_retrieved = semantic_response
         return semantic_response
 
       # here the vectordb retrieved answer and also cached in redis for next search as for this one nothign was found in cache
       elif "vector_search_response_after_cache_failed_to_find" in response:
         vector_response = response["vector_search_response_after_cache_failed_to_find"]
+        # List[Dict[str,Any]]
+        RetrievedRedisVectordb.vectorbd_retrieved = vector_response
         return vector_response
 
       # here a message that suggest to perform internet search on the query as nothing has been found in redis and vectordb
       elif "message" in response:
         print(response["message"])
+        # str
+        RetrievedRedisVectordb.nothing_retrieved = True
         return response["message"]
 
       # Here to catch any errors
       elif "error" in response:
-        raise(f"response['error']")
+        raise Exception(response["error"])
     
   except Exception as e:
-    return f"An error occured while trying to handle query by calling cache then vectordb if nothing found: {e}"
+    # Dict[str,str]
+    return {"error": f"An error occured while trying to handle query by calling cache then vectordb if nothing found: {e}"}
 
 """
 
@@ -611,16 +631,50 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
 
 ###### INTERNET SEARCH TOOL ######
 ## -5 PERFORM INTERNET SEARCH IF NO ANSWER FOUND IN REDIS OR PGVECTOR
-from langchain_core.tools import Tool
-from langchain_community.tools import DuckDuckGoSearchRun, DuckDuckGoSearchResults # Run vs Results: Results have more information 
+
+# function that check states to know if we perform internet search, should handle all the cases in which internet search can be called
+def internet_searching_job_nothing_retrieved(state: RetrievedRedisVectordb, tool_llm: ChatGroq) -> str:
+  if states.nothing_retrieved = True:
+    """
+      Then here perform an internet search, so you will need the state having the user text query
+    """
+    user_query = states.["DetectContentState"].no_doc_but_simple_query_text
+    response = tool_llm.invoke(user_query)
+    return response.content
+  else:
+    
+    
+
+
 internet_search_tool = DuckDuckGoSearchRun()
 tool_internet = Tool(
     name="duckduckgo_search",
     description="Search DuckDuckGO for recent results.",
     func=internet_search_tool.run,
 )
-internet = [tool_internet]
-llm_with_internet_searhc_tool = groq_llm_mixtral_7b.bind_tools(internet)
+internet = [tool_internet] # maybe we can put more tools in the list and agent will see which one to use reading doctrings
+llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools(internet)
+# OR
+internet_tool_node = ToolNode(internet)
+
+workflow = StateGraph(MessagesState)
+
+# each node will have one function so one job to do
+workflow.add_node("internet_tool", internet_tool_node)
+
+# each conditional edge will have an agent to go from and a function that perform task to determine which is the next agent called.
+workflow.add_conditional_edges(
+    # here define the start node for this conditional edge. This means these are the edges taken after the `agent` node is called. so new routes
+    "<determine_after_which_agent_we_call_this_edge>",
+    # Next, we pass in the function that will determine which node will be reached next. so this function should return END or next node name
+    <put_func_name>,
+    {
+        "search": "web_search", # if output == "search" use web_search node
+        "generate": "generate",  # if output == "generate" use generate node
+    },
+)
+
+workflow.add_edge("web_search", "generate") 
 
 ##### PROMPTS CREATION TO EXPLAIN TO LLM WHAT TO DO AND CONDITIONS IF ANY #####
 ## 6- CREATE PROMPT TO INSTRUCT LLM

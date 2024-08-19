@@ -96,7 +96,7 @@ def clear_cache(table_name: str):
     # Flush all keys in Redis
     redis_client.flushdb()
     # Reset the retrieved column to False in PostgreSQL
-    cursor.execute(sql.SQL(f"UPDATE {table_name} SET retrieved = 'FALSE' WHERE retrieved = 'TRUE';"))
+    cursor.execute(sql.SQL("UPDATE {} SET retrieved = 'FALSE' WHERE retrieved = 'TRUE';").format(sql.Identifier(table_name)))
     conn.commit()
     cursor.close()
     conn.close()
@@ -107,7 +107,7 @@ def update_retrieved_status(table_name: str, doc_id: str):
     conn = connect_db()
     cursor = conn.cursor()
     # `doc_id` is a `uuid.UUID` and has to be passed as `str` for database sql query
-    cursor.execute(sql.SQL(f"UPDATE {table_name} SET retrieved = 'TRUE' WHERE id = '{doc_id}';"))
+    cursor.execute(sql.SQL("UPDATE {} SET retrieved = 'TRUE' WHERE id = '{}';").format(sql.Identifier(table_name), sql.Identifier(doc_id)))
     conn.commit()
     cursor.close()
     conn.close()
@@ -119,7 +119,7 @@ def fetch_documents(table_name: str) -> List[Dict[str, Any]]:
     cursor = conn.cursor()
     # here can customize using the extra columns that we have in the db and this will help create the object to embed
     #cursor.execute("SELECT id, doc_name, title, content FROM documents ORDER BY id")
-    cursor.execute(sql.SQL(f"SELECT id, doc_name, title, content FROM {table_name} ORDER BY id;"))
+    cursor.execute(sql.SQL("SELECT id, doc_name, title, content FROM {} ORDER BY id;").format(sql.Identifier(table_name)))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -209,7 +209,7 @@ def fetch_document_by_uuid(table_name: str, doc_id: str) -> Dict[str, Any]:
     cursor = conn.cursor()
     print("Doc id: ", doc_id, " , Type: ", type(doc_id))
     # doc_id is a uuid.UUID we need to pass in the query the `str` version of it
-    cursor.execute(sql.SQL(f"SELECT * FROM {table_name} WHERE id = '{doc_id}';"))
+    cursor.execute(sql.SQL("SELECT * FROM {} WHERE id = '{}';").format(sql.Identifier(table_name), sql.Identifier(doc_id)))
     row = cursor.fetchone()
     print("ROW Found in DB: ", row)
     cursor.close()
@@ -246,7 +246,8 @@ def clear_vector_table(table_name: str) -> str:
         cursor.close()
 
 # Delete table entirely : bye bye table
-def delete_table(table_name: str):
+# function to delete table hat can be used as a tool
+def delete_table(table_name: str) -> Dict[str, str]:
     """
     Delete a table from the PostgreSQL database using psycopg2.
     
@@ -259,20 +260,22 @@ def delete_table(table_name: str):
         cursor = conn.cursor()
     except Exception as e:
         print(f"Failed to connect to the database: {e}")
-        return
+        return {"error": f"An error occured while trying to connect to table in 'delete_table': {e}"}
 
     # Delete the table if it exists
     try:
-        cursor.execute(sql.SQL(f"DROP TABLE IF EXISTS {table_name};"))
+        cursor.execute(sql.SQL(f"DROP TABLE IF EXISTS {};").format(sql.Identifier(table_name)))
         conn.commit()
         print(f"Table {table_name} deleted successfully.")
     except Exception as e:
         print(f"Failed to delete table {table_name}: {e}")
         conn.rollback()  # Rollback in case of error for the current transaction
+        return {"error": f"An error occured while trying to drop the table {table_name}: {e}"}
     finally:
         # Close the cursor and the connection
         cursor.close()
         conn.close()
+        return {"success": f"Table {table_name} have been deleted."}
 
 #### BUSINESS LOGIC OF RETIREVAL: goes to db qith query and get relevance score and then goes to the postgresql db to getthe rest of the row content to form a nice context for quality answer.
 def answer_retriever(table_name: str, query: str, relevance_score: float, top_n: int) -> List[Dict[str, Any]]:
