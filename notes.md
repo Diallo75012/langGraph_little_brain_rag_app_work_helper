@@ -1520,11 +1520,70 @@ List[Tuple[Documents, score]]
 
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
-- data saved to adb and workflow fine but need now to work on the redis cache retrieval part and vectordb search and falldown to a internet search with a separate func for next agent
+- data saved to adb and workflow fine but need now to work on the redis cache retrieval part and vectordb search and falldown to a internet search with a separate func for next agent - OK
 - create all functions that each nodes will need (tools and other functions)
 - create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
 - See if you need function to get rid of DB info. Create the function that resets the db to zero - OK
 - reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+
+# REDIS-CLI
+
+```bash
+# from redi-cli, get all keys stored
+KEYS *
+# or
+SCAN 0
+
+# from bash terminal, iterate through keys and get their values `key -> value`
+redis-cli --scan --pattern "*" | while read key; do echo "$key -> $(redis-cli get $key)"; done
+
+# delete all keys everythign from the redis server
+redis-cli FLUSHALL
+
+# delete keys on a selected redis database only
+redis-cli FLUSHDB
+```
+
+
+# PGVECTOR Deprecation new import (https://api.python.langchain.com/en/latest/vectorstores/langchain_postgres.vectorstores.PGVector.html)[docs]
+- before: `from langchain_community.vectorstores.pgvector import PGVector`
+- now: `from langchain_postgres import PGVector` OR `from langchain_postgres.vectorstores import PGVector`
+```bash
+# install
+pip install -qU langchain-postgres
+# run in docker if wanted (we will use our own postgresql datrabase on the server and activate the pgvector extension in this project)
+docker run --name pgvector-container -e POSTGRES_USER=langchain -e POSTGRES_PASSWORD=langchain -e POSTGRES_DB=langchain -p 6024:5432 -d pgvector/pgvector:pg16
+```
+
+
+# Next
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
+- make the tool for internet search fall node which will be the falldown of our query cache/vectordb search fail. This will start next point here do nodes and tools...
+- create all functions that each nodes will need (tools and other functions)
+- create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
+- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

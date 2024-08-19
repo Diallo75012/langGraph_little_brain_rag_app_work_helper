@@ -47,8 +47,9 @@ def create_table_if_not_exists():
       - content: is the chunck content
       - retrieved: is a boolean to check if document has been retrieved in the past or not to create later on, a cache of that data so that it will improve retrieval if we get same kind of query (using special agent node to check that, and cache Redis with TTL and reset of that column so we need a function that does that, one that created the cache based on that column True and put in Redis with TTL and another which clears the cache everyday.week.month.. and reset that column to False)
     """
+    # table is called `test_table` make sure to change name for application when tests are done
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS documents (
+        CREATE TABLE IF NOT EXISTS test_table (
             id UUID PRIMARY KEY,
             doc_name TEXT,
             title TEXT,
@@ -88,25 +89,25 @@ def cache_document(doc_id: uuid.UUID, content: str, ttl: int = 3600):
     redis_client.setex(str(doc_id), timedelta(seconds=ttl), content)
 
 # clear Redis cache function which sets the `retrieved` column to FALSE
-def clear_cache():
+def clear_cache(table_name: str):
     """Clear the Redis cache and reset the retrieved column in PostgreSQL."""
     conn = connect_db()
     cursor = conn.cursor()
     # Flush all keys in Redis
     redis_client.flushdb()
     # Reset the retrieved column to False in PostgreSQL
-    cursor.execute("UPDATE documents SET retrieved = FALSE WHERE retrieved = TRUE")
+    cursor.execute(sql.SQL(f"UPDATE {table_name} SET retrieved = 'FALSE' WHERE retrieved = 'TRUE';"))
     conn.commit()
     cursor.close()
     conn.close()
 
 # sets the `retireved` column to TRUE. Can be used when retrieval is performed and maybe then also cache that using the function in `query_matching` library
-def update_retrieved_status(doc_id: uuid.UUID):
+def update_retrieved_status(table_name: str, doc_id: str):
     """Update the retrieved status of the document in PostgreSQL."""
     conn = connect_db()
     cursor = conn.cursor()
     # `doc_id` is a `uuid.UUID` and has to be passed as `str` for database sql query
-    cursor.execute("UPDATE documents SET retrieved = TRUE WHERE id = %s", (str(doc_id),))
+    cursor.execute(sql.SQL(f"UPDATE {table_name} SET retrieved = 'TRUE' WHERE id = '{doc_id}';"))
     conn.commit()
     cursor.close()
     conn.close()
@@ -118,7 +119,7 @@ def fetch_documents(table_name: str) -> List[Dict[str, Any]]:
     cursor = conn.cursor()
     # here can customize using the extra columns that we have in the db and this will help create the object to embed
     #cursor.execute("SELECT id, doc_name, title, content FROM documents ORDER BY id")
-    cursor.execute(f"SELECT id, doc_name, title, content FROM {table_name} ORDER BY id")
+    cursor.execute(sql.SQL(f"SELECT id, doc_name, title, content FROM {table_name} ORDER BY id;"))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -202,12 +203,13 @@ def retrieve_relevant_vectors(query: str, top_n: int = 3) -> List[Dict[str, Any]
     return results
 
 # use the UUID of the retirved doc to fetch the postgresql database row and get extra infos from it later on, it is also to verify the qulity of embedding and catch errors if the content is different for example (at the beginning of dev work then when we are sure of the code we get rid of the checks, but we will definetly check thatthe content is the same from embedding to database row content.).
-def fetch_document_by_uuid(doc_id: uuid.UUID) -> Dict[str, Any]:
-    """Fetch the document content by UUID from the PostgreSQL database."""
+def fetch_document_by_uuid(table_name: str, doc_id: str) -> Dict[str, Any]:
+    """Fetch the table content by UUID from the PostgreSQL database."""
     conn = connect_db()
     cursor = conn.cursor()
+    print("Doc id: ", doc_id, " , Type: ", type(doc_id))
     # doc_id is a uuid.UUID we need to pass in the query the `str` version of it
-    cursor.execute("SELECT * FROM documents WHERE id = %s", (str(doc_id),))
+    cursor.execute(sql.SQL(f"SELECT * FROM {table_name} WHERE id = '{doc_id}';"))
     row = cursor.fetchone()
     print("ROW Found in DB: ", row)
     cursor.close()
@@ -234,7 +236,7 @@ def clear_vector_table(table_name: str) -> str:
         conn = connect_db()
         cursor = conn.cursor()
         # Delete all rows from the table
-        cursor.execute(sql.SQL(f"DELETE FROM {table_name}"))
+        cursor.execute(sql.SQL(f"DELETE FROM {table_name};"))
         conn.commit()
         return f"All rows in table '{table_name}' have been successfully deleted."
     except Exception as e:
@@ -273,7 +275,7 @@ def delete_table(table_name: str):
         conn.close()
 
 #### BUSINESS LOGIC OF RETIREVAL: goes to db qith query and get relevance score and then goes to the postgresql db to getthe rest of the row content to form a nice context for quality answer.
-def answer_retriever(query: str, relevance_score: float, top_n: int) -> List[Dict[str, Any]]:
+def answer_retriever(table_name: str, query: str, relevance_score: float, top_n: int) -> List[Dict[str, Any]]:
     """Retrieve answers using PGVector"""
     relevant_vectors = retrieve_relevant_vectors(query, top_n)
     print("Type relevant_vectors: ", type(relevant_vectors), "\nContent: ", relevant_vectors)
@@ -284,8 +286,9 @@ def answer_retriever(query: str, relevance_score: float, top_n: int) -> List[Dic
         #for doc in vector:
         print("Vector: ", vector)
         doc_id = vector['UUID']
-          # here document will be a dict with keys: id, doc_name, title, content coming from the postgresql db, saved in the dict with key raw_data
-        document = fetch_document_by_uuid(doc_id)
+        print("Doc_id before fetch data from DB: ", doc_id, "Type: ",type(doc_id))
+        # here document will be a dict with keys: id, doc_name, title, content coming from the postgresql db, saved in the dict with key raw_data
+        document = fetch_document_by_uuid(table_name, doc_id)
         results.append({
             'UUID': vector['UUID'],
             'score': vector['score'],

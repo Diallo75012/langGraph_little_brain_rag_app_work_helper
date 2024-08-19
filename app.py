@@ -565,29 +565,49 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
 
 ## 4- FETCH QUERY FROM REDIS CACHE, IF NOT FOUND ONLY THEN DO A VECTOR RETRIEVAL FROM VECTORDB
 
-def query_redis_cache_then_vecotrdb_if_no_cache(query: str, score: float, top_n: int) -> List[Dict[str,Any]] | str:
+def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, score: float, top_n: int) -> List[Dict[str,Any]] | str:
+
   try:
-    response = handle_query_by_calling_cache_then_vectordb_if_fail(query, score, top_n)
+    response = handle_query_by_calling_cache_then_vectordb_if_fail(table_name, query, score, top_n)
+    print("RESPONSE CACHE OR VDB: ", json.dumps(response, indent=4))
+    
+    if response:
+
+
+      # here the redis response from hashed query matching
+      if "exact_match_search_response_from_cache" in response: 
+        exact_match_response = response["exact_match_search_response_from_cache"]
+        return exact_match_response
+
+      # here the redis response from semantic search on stored embeddings as no hashed query matched to get an answer
+      elif "semantic_search_response_from_cache" in response: 
+        semantic_response = response["semantic_search_response_from_cache"]
+        return semantic_response
+
+      # here the vectordb retrieved answer and also cached in redis for next search as for this one nothign was found in cache
+      elif "vector_search_response_after_cache_failed_to_find" in response:
+        vector_response = response["vector_search_response_after_cache_failed_to_find"]
+        return vector_response
+
+      # here a message that suggest to perform internet search on the query as nothing has been found in redis and vectordb
+      elif "message" in response:
+        print(response["message"])
+        return response["message"]
+
+      # Here to catch any errors
+      elif "error" in response:
+        raise(f"response['error']")
+    
   except Exception as e:
     return f"An error occured while trying to handle query by calling cache then vectordb if nothing found: {e}"
 
-  print("RESPONSE CACHE OR VDB: ", json.dumps(response, indent=4))
-  if response["exact_match_search_response_from_cache"]: 
-    exact_match_response = response["exact_match_search_response_from_cache"]
-    return exact_match_response
-  elif response["semantic_search_response_from_cache"]: 
-    semantic_response = response["semantic_search_response_from_cache"]
-    return semantic_response
-  elif response["vector_search_response_after_cache_failed_to_find"]:
-    vector_response = response["vector_search_response_after_cache_failed_to_find"]
-    return vector_response
-  elif response["message"]:
-    print(response["message"])
-    return response["message"]
-    """
+"""
+
+"""
+"""
     # here this means that the cache search and vector search did fail to find relevant information
     # we need then to do an internet search using another node or to have this in a conditional eadge
-    """
+"""
 
 ###### INTERNET SEARCH TOOL ######
 ## -5 PERFORM INTERNET SEARCH IF NO ANSWER FOUND IN REDIS OR PGVECTOR

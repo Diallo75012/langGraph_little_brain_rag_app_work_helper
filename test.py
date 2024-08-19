@@ -129,10 +129,11 @@ id                  |         doc_name          |                               
 #chunk_and_embed_from_db_data = custom_chunk_and_embed_to_vectordb("test_table", 500, COLLECTION_NAME, CONNECTION_STRING)
 #print("CHUNK AND EMBED: ", chunk_and_embed_from_db_data)
 
-retrieve_data_from_query = query_redis_cache_then_vecotrdb_if_no_cache("What are the AI tools of Chikara Houses?", 0.3, 2)
-print("RETRIEVE DATA for query 'how to start monetize online presence?': ", retrieve_data_from_query)
+retrieve_data_from_query = query_redis_cache_then_vecotrdb_if_no_cache("test_table", "What are the AI tools of Chikara Houses?", 0.3, 2)
+print("RETRIEVE DATA for query 'how to start monetize online presence?': ", json.dumps(retrieve_data_from_query, indent=4))
 
 url_target_answer = "Explore AI tools by Chikara Houses in the Openai GPT store. Improve remote work and well-being with their GPTs. Visit their unique shopping rooms, too."
+
 
 
 
