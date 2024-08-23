@@ -57,7 +57,11 @@ from langchain.docstore.document import Document
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain.chains import RetrievalQA
 
-from states.graph_states import TestState
+from app_states.app_graph_states import StateCustom
+# for graph creation and management
+from langgraph.checkpoint import MemorySaver
+from langgraph.graph import END, StateGraph, MessagesState
+from langgraph.prebuilt import ToolNode
 
 
 load_dotenv()
@@ -102,7 +106,15 @@ query_pdf = "I want to know if this documents docs/feel_temperature.pdf tells us
 
 
 
+def get_user_input(state: MessagesState):
+  user_input =  input("Do you need any help? any PDF doc or webpage to analyze? ")
 
+  messages = state['messages']
+  
+  return {"messages": [user_input]}
+
+def answer_user(state: MessagesState):
+  return {"messages": ["output_message"]}
 
 #dataframe_from_query = process_query(groq_llm_mixtral_7b, query_url, 200, 30, 250, detect_content_type_prompt, summarize_text_prompt, generate_title_prompt)
 #print("DATAFRAME: ", dataframe_from_query)
@@ -127,7 +139,43 @@ query_pdf = "I want to know if this documents docs/feel_temperature.pdf tells us
 
 
 
+# Initialize states
+workflow = StateGraph(MessagesState)
 
+# each node will have one function so one job to do
+workflow.add_node("get_user_input", get_user_input)
+workflow.add_node("dataframe_from_query", process_query)
+workflow.add_node("answer_user", answer_user)
+
+#workflow.add.node("store_dataframe_to_db", store_dataframe_to_db)
+#workflow.add.node("chunk_and_embed_from_db_data", custom_chunk_and_embed_to_vectordb)
+#workflow.add.node("retrieve_data_from_query", query_redis_cache_then_vecotrdb_if_no_cache)
+#workflow.add.node("answer_user", final_answer)
+
+workflow.set_entry_point("get_user_input")
+workflow.add_edge("get_user_input", "dataframe_from_query")
+#workflow.add_edge("dataframe_from_query", "store_dataframe_to_db")
+#workflow.add_edge("store_dataframe_to_db", "chunk_and_embed_from_db_data")
+#workflow.add_edge("chunk_and_embed_from_db_data", "retrieve_data_from_query")
+#workflow.add_edge("retrieve_data_from_query", "answer_user")
+
+workflow.add_edge("dataframe_from_query", "answer_user")
+workflow.add_edge("answer_user", END)
+
+checkpointer = MemorySaver()
+
+app = workflow.compile(checkpointer=checkpointer)
+
+
+
+
+final_state = app.invoke(
+  #{ "query": UserInput.user_initial_input },
+  {"messages": [HumanMessage(content="initialize messages")]},
+  config={"configurable": {"thread_id": 11}}
+)
+
+# query = "I am looking for japanese furniture and want to know if chikarahouses.com have those"
 
 
 

@@ -19,7 +19,8 @@ from typing import Literal, TypedDict, Dict, List, Tuple, Any, Optional
 from pydantic import BaseModel
 # for llm call with func or tool and prompts formatting
 from langchain_groq import ChatGroq
-from langchain_core.tools import tool
+# one is @tool decorator and the other Tool class
+from langchain_core.tools import tool, Tool
 from langchain_community.tools import (
   # Run vs Results: Results have more information
   DuckDuckGoSearchRun,
@@ -86,13 +87,7 @@ from lib_helpers.embedding_and_retrieval import (
   embeddings
 )
 # STATES
-from states.graph_states import (
-  ParseDocuments,
-  DetectContentState,
-  StoreDftodbState,
-  ChunkAndEmbedDbdataState,
-  RetrievedRedisVectordb
-)
+from app_states.app_graph_states import StateCustom
 # DOCKER REMOTE CODE EXECUTION
 # eg.: print(run_script_in_docker("test_dockerfile", "./app.py"))
 from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker # returns `Tuple[str, str]` stdout,stderr
@@ -119,6 +114,17 @@ conn = connect_db()
 create_table_if_not_exists()
 
 
+# initialized vars:
+'''
+UserInput.user_initial_input = input("How can i help you? ")
+FuncInputParams.maximum_content_length = 200
+FuncInputParams.maximum_title_length = 30
+FuncInputParams.chunk_size_df = 250
+FuncInputParams.detect_prompt_template = detect_content_type_prompt
+FuncInputParams.text_summary_prompt = summarize_text_prompt
+FuncInputParams.title_summary_prompt = generate_title_prompt
+FuncOutputs.df_final = pd.DataFrame()
+'''
 
 # Define the tools for the agent to use
 # this is a dummy tool just for the sake of testing langgraph
@@ -381,13 +387,9 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
   
   # create csv files as log of what have been produced for demonstration and human verification to later improve prompts or workflow quality data extraction
   if is_url:
-    # save df to url state
-    ParseDocuments.url_parsed_dataframe_state = df_final
     with open("test_url_parser_df_output.csv", "w", encoding="utf-8") as f:
       df_final.to_csv(f, index=False)
   else:
-    # save df to webpage state
-    ParseDocuments.webpage_parsed_dataframe_state = df_final
     with open("test_pdf_parser_df_output.csv", "w", encoding="utf-8") as f:
       df_final.to_csv(f, index=False)
   
@@ -403,41 +405,58 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
 
 ## 1- IDENTIFY IF QUERY IS FOR A PFD OR A WEB PAGE
 # Main function to process the user query and return pandas dataframe and the user query dictionary structured by llm. here df_final will have chunks already done! cool!
-def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int], detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt) -> Tuple | Dict:
+#def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int], detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt) -> Tuple | Dict:
+#def process_query(llm: ChatGroq = groq_llm_mixtral_7b, query: str = UserInput.user_initial_input, maximum_content_length: int = FuncInputParams.maximum_content_length, maximum_title_length: int = FuncInputParams.maximum_title_length, chunk_size: Optional[int] = FuncInputParams.chunk_size_df, detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt, final_df: pd.DataFrame = FuncOutputs.df_final) -> Tuple | Dict:
+def process_query(state: MessagesState):
+    messages = state['messages']
+    print("messages from should_continue func: ", messages)
+    last_message = messages[-1].content
+    print("Last Message: ", last_message, type(last_message))
+    # variables
+    query = last_message
+    maximum_content_length = 200
+    maximum_title_length = 30
+    chunk_size = 250
+    detect_prompt_template = detect_content_type_prompt
+    text_summary_prompt = summarize_text_prompt
+    title_summary_prompt = generate_title_prompt
+
+    print("Query: ", query)
+
+    # Default values in the function
+    llm = groq_llm_mixtral_7b
+
     # use of detect_content_type from `query_analyzer_module`
     content_str = detect_content_type(llm, query, detect_prompt_template)
     content_dict = string_to_dict(content_str)
-    
-    # update state to keep the reformulated query and use it later
-    if content_dict["question"]:
-      DetectContentState.question = content_dict["question"]
-    
+
     # print content to see how it looks like, will it getthe filename if pdf or the full correct url if url...
     print("content_dict: ", content_dict)
+
     if content_dict["pdf"] and is_url_or_pdf(content_dict["pdf"].strip()) == "pdf":
-        # update state doc type
-        DetectContentState.doc_type = content_dict["pdf"]
         is_url = False
         # functions from `lib_helpers.pdf_parser`(for pdf we increase a bit the content lenght accepted and the chunk size)
         df_final = get_final_df(llm, is_url, content_dict["pdf"].strip(), maximum_content_length + 200, maximum_title_length, chunk_size + 150, text_summary_prompt, title_summary_prompt)
-        # save df to state
-        ParseDocuments.pdf_parsed_dataframe_state = df_final
     elif content_dict["url"] and is_url_or_pdf(content_dict["url"].strip()) == "url":
-        # update state doc type
-        DetectContentState.doc_type = content_dict["url"]
         is_url = True
         # just for text to see if `is_url_or_pdf` func works as expected
         #return is_url
         # functions from `lib_helpers.webpage_parser`
         df_final = get_final_df(llm, is_url, content_dict["url"].strip(), maximum_content_length, maximum_title_length, chunk_size, text_summary_prompt, title_summary_prompt)
-        # save df to state
-        ParseDocuments.url_parsed_dataframe_state = df_final
     else:
         # update state no_doc_but_text (thismeans that it is just a questiont hat can be answers combining llm answer and internet search for example)
-        DetectContentState.no_doc_but_simple_query_text = content_dict["text"]        
+        state_custom.no_doc_but_simple_query_text = content_dict["text"]        
         return {"message": f"No PDF nor URL found in the query. Content: {content_dict}. Therefore just answer to this user query: {content_dict['text']}"}
     
-    return df_final, content_dict
+    #return df_finaldf_final, content_dict
+    # update state
+
+    df_serialized = df_final.to_json(orient='split')
+    print("DF SERIALIZED: ", df_serialized)
+    df_final = pd.read_json(df_serialized, orient='split')
+    print("DF DESERIALIZED: ", df_final)
+    return {"messages": [{"role": "system", "content": df_serialized}]}
+
 
 ## 2- STORE DOCUMENT DATA TO POSTGRESQL DATABASE
 # Function to store cleaned data in PostgreSQL
@@ -496,7 +515,7 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str) -> Dict[str, 
     for index, row in df_final.iterrows():
         try:
             # Check if the content already exists in the table
-            cursor.execute(sql.SQL(f"""
+            cursor.execute(sql.SQL("""
                 SELECT COUNT(*) FROM {}
                 WHERE doc_name = {} AND content = {};
             """).format(sql.Identifier(table_name), sql.Identifier(row["doc_name"]), sql.Identifier(row["content"])))
@@ -539,7 +558,7 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
   except Exception as e:
     conn.close()
     # update state
-    ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = False
+    StateCustom.df_data_chunked_and_embedded = False
     return {"error": f"An error occured while trying to fetch rows from db -> {e}"}
   # here we get List[List[Dict[str,Any]]]
   try:
@@ -548,7 +567,7 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
   except Exception as e:
     conn.close()
     # update state
-    ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = False
+    StateCustom.df_data_chunked_and_embedded = False
     return {"error": f"An error occured while trying to create chunks -> {e}"}
   # here we create the custom document and embed it
   try:
@@ -558,12 +577,12 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
   except Exception as e:
     conn.close()
     # update state
-    ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = False
+    StateCustom.df_data_chunked_and_embedded = False
     return {"error": f"An error occured while trying to create custom docs and embed it -> {e}"}
   
   conn.close()
   # update state
-  ChunkAndEmbedDbdataState.df_data_chunked_and_embedded = True
+  state.df_data_chunked_and_embedded = True
   
   return {"success": "database data fully embedded to vectordb"}
     
@@ -589,28 +608,28 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
       if "exact_match_search_response_from_cache" in response: 
         exact_match_response = response["exact_match_search_response_from_cache"]
         # List[Dict[str,Any]]
-        RetrievedRedisVectordb.query_hash_retrieved = exact_match_response
+        StateCustom.query_hash_retrieved = exact_match_response
         return exact_match_response
 
       # here the redis response from semantic search on stored embeddings as no hashed query matched to get an answer
       elif "semantic_search_response_from_cache" in response: 
         semantic_response = response["semantic_search_response_from_cache"]
         # List[Dict[str,Any]]
-        RetrievedRedisVectordb.query_vector_hash_retrieved = semantic_response
+        StateCustom.query_vector_hash_retrieved = semantic_response
         return semantic_response
 
       # here the vectordb retrieved answer and also cached in redis for next search as for this one nothign was found in cache
       elif "vector_search_response_after_cache_failed_to_find" in response:
         vector_response = response["vector_search_response_after_cache_failed_to_find"]
         # List[Dict[str,Any]]
-        RetrievedRedisVectordb.vectorbd_retrieved = vector_response
+        StateCustom.vectorbd_retrieved = vector_response
         return vector_response
 
       # here a message that suggest to perform internet search on the query as nothing has been found in redis and vectordb
       elif "message" in response:
         print(response["message"])
         # str
-        RetrievedRedisVectordb.nothing_retrieved = True
+        StateCustom.nothing_retrieved = True
         return response["message"]
 
       # Here to catch any errors
@@ -633,15 +652,15 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
 ## -5 PERFORM INTERNET SEARCH IF NO ANSWER FOUND IN REDIS OR PGVECTOR
 
 # function that check states to know if we perform internet search, should handle all the cases in which internet search can be called
-def internet_searching_job_nothing_retrieved(state: RetrievedRedisVectordb, tool_llm: ChatGroq) -> str:
-  if states.nothing_retrieved = True:
+def internet_searching_job_nothing_retrieved(state: StateCustom, tool_llm: ChatGroq) -> str:
+  if state.nothing_retrieved == True:
     """
       Then here perform an internet search, so you will need the state having the user text query
     """
-    user_query = states.["DetectContentState"].no_doc_but_simple_query_text
+    user_query = state.no_doc_but_simple_query_text
     response = tool_llm.invoke(user_query)
     return response.content
-  else:
+  #else:
     
     
 
@@ -657,7 +676,9 @@ llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools(internet)
 # OR
 internet_tool_node = ToolNode(internet)
 
-workflow = StateGraph(MessagesState)
+'''
+# Initialize states
+workflow = StateGraph(DetectContentState, ParseDocuments, StoreDftodbState, ChunkAndEmbedDbdataState, RetrievedRedisVectordb)
 
 # each node will have one function so one job to do
 workflow.add_node("internet_tool", internet_tool_node)
@@ -675,6 +696,7 @@ workflow.add_conditional_edges(
 )
 
 workflow.add_edge("web_search", "generate") 
+'''
 
 ##### PROMPTS CREATION TO EXPLAIN TO LLM WHAT TO DO AND CONDITIONS IF ANY #####
 ## 6- CREATE PROMPT TO INSTRUCT LLM

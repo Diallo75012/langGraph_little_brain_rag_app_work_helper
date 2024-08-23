@@ -1559,8 +1559,8 @@ docker run --name pgvector-container -e POSTGRES_USER=langchain -e POSTGRES_PASS
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
 - make the tool for internet search fall node which will be the falldown of our query cache/vectordb search fail. This will start next point here do nodes and tools...
-- create all functions that each nodes will need (tools and other functions)
-- create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge fo easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
+- create all functions that each nodes will need (tools and other functions) -OK
+- create states and use workflow functions to save in each state, name the state the name of the node and the name of the edge for easy logic and limit confusion, therefore, separate states (have many mini states) and find a way to empty those at the right moment with one function at the end of graph or some depending on the logic.
 - reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
 
 
@@ -1778,7 +1778,7 @@ def <func_name>(<arg_name>: <input_type> = <default_value_if_any>) -> <return_ty
   # callback==callback_function # will run after task is completed
 )
 
-
+StateGraph(DetectContentState, ParseDocuments, StoreDftodbState, ChunkAndEmbedDbdataState, RetrievedRedisVectordb)
 
 
 

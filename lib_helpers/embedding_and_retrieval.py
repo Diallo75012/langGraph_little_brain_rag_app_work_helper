@@ -236,7 +236,7 @@ def clear_vector_table(table_name: str) -> str:
         conn = connect_db()
         cursor = conn.cursor()
         # Delete all rows from the table
-        cursor.execute(sql.SQL(f"DELETE FROM {table_name};"))
+        cursor.execute(sql.SQL("DELETE FROM {};").format(sql.Identifier(table_name)))
         conn.commit()
         return f"All rows in table '{table_name}' have been successfully deleted."
     except Exception as e:
@@ -264,7 +264,7 @@ def delete_table(table_name: str) -> Dict[str, str]:
 
     # Delete the table if it exists
     try:
-        cursor.execute(sql.SQL(f"DROP TABLE IF EXISTS {};").format(sql.Identifier(table_name)))
+        cursor.execute(sql.SQL("DROP TABLE IF EXISTS {};").format(sql.Identifier(table_name)))
         conn.commit()
         print(f"Table {table_name} deleted successfully.")
     except Exception as e:
