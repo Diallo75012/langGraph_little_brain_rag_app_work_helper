@@ -45,9 +45,14 @@ from bs4 import BeautifulSoup
 from app import (
   process_query,
   is_url_or_pdf,
-  store_dataframe_to_db, delete_table,
+  store_dataframe_to_db,
+  delete_table,
   custom_chunk_and_embed_to_vectordb,
-  query_redis_cache_then_vecotrdb_if_no_cache
+  query_redis_cache_then_vecotrdb_if_no_cache,
+  # tool function
+  internet_research_user_query,
+  # graph conditional adge helper function
+  decide_next_step
 )
 
 import subprocess
@@ -62,6 +67,12 @@ from app_states.app_graph_states import StateCustom
 from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode
+
+# display drawing of graph
+from IPython.display import Image, display
+
+# tools
+from app_tools.app_tools import internet
 
 
 load_dotenv()
@@ -114,7 +125,10 @@ def get_user_input(state: MessagesState):
   return {"messages": [user_input]}
 
 def answer_user(state: MessagesState):
-  return {"messages": ["output_message"]}
+  messages = state['messages']
+  print("Message state: ", messages)
+  last_message = messages[-1].content
+  return {"messages": [{"role": "ai", "content": last_message}]}
 
 #dataframe_from_query = process_query(groq_llm_mixtral_7b, query_url, 200, 30, 250, detect_content_type_prompt, summarize_text_prompt, generate_title_prompt)
 #print("DATAFRAME: ", dataframe_from_query)
@@ -146,6 +160,8 @@ workflow = StateGraph(MessagesState)
 workflow.add_node("get_user_input", get_user_input)
 workflow.add_node("dataframe_from_query", process_query)
 workflow.add_node("answer_user", answer_user)
+workflow.add_node("internet_search", internet_research_user_query)
+workflow.add_node("store_dataframe_to_db", store_dataframe_to_db)
 
 #workflow.add.node("store_dataframe_to_db", store_dataframe_to_db)
 #workflow.add.node("chunk_and_embed_from_db_data", custom_chunk_and_embed_to_vectordb)
@@ -154,12 +170,22 @@ workflow.add_node("answer_user", answer_user)
 
 workflow.set_entry_point("get_user_input")
 workflow.add_edge("get_user_input", "dataframe_from_query")
+workflow.add_conditional_edges(
+    "dataframe_from_query",  # Node where the decision is made
+    decide_next_step,        # Function that makes the decision
+    {
+        "do_df_storage": "store_dataframe_to_db",  # Node to store dataframe in DB
+        "do_internet_search": "internet_search",            # Node to perform internet search
+    }
+)
+workflow.add_edge("dataframe_from_query", "internet_search")
 #workflow.add_edge("dataframe_from_query", "store_dataframe_to_db")
 #workflow.add_edge("store_dataframe_to_db", "chunk_and_embed_from_db_data")
 #workflow.add_edge("chunk_and_embed_from_db_data", "retrieve_data_from_query")
 #workflow.add_edge("retrieve_data_from_query", "answer_user")
 
 workflow.add_edge("dataframe_from_query", "answer_user")
+workflow.add_edge("internet_search", "answer_user")
 workflow.add_edge("answer_user", END)
 
 checkpointer = MemorySaver()
@@ -175,10 +201,15 @@ final_state = app.invoke(
   config={"configurable": {"thread_id": 11}}
 )
 
+# Get the final message
+final_message = final_state["messages"][-1].content
+print("Final Message:", final_message)
 # query = "I am looking for japanese furniture and want to know if chikarahouses.com have those"
 
-
-
+# display graph drawing
+graph_image = app.get_graph().draw_png()
+with open("graph.png", "wb") as f:
+    f.write(graph_image)
 
 
 

@@ -38,6 +38,7 @@ from langchain.prompts import (
   HumanMessagePromptTemplate,
   AIMessagePromptTemplate
 )
+from app_tools.app_tools import internet
 from langchain_core.output_parsers import JsonOutputParser
 # for graph creation and management
 from langgraph.checkpoint import MemorySaver
@@ -51,7 +52,8 @@ from dotenv import load_dotenv
 from prompts.prompts import (
   detect_content_type_prompt,
   summarize_text_prompt,
-  generate_title_prompt
+  generate_title_prompt,
+  generate_from_empty_prompt
 )
 # USER QUERY ANALYSIS AND TRANSFORMATION
 from lib_helpers.query_analyzer_module import detect_content_type # returns `str`
@@ -395,10 +397,28 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
   
   return df_final
 
+# save dataframe to file path parquet formatted
+def save_dataframe(df, directory="parsed_dataframes"):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    file_id = str(uuid4())
+    file_path = os.path.join(directory, f"{file_id}.parquet")
+    df.to_parquet(file_path)
+    return file_path
 
+# load dataframe from file path (from a parquet formatted data)
+def load_dataframe(file_path):
+    return pd.read_parquet(file_path)
 
-"""def analyze_user_query():"""
-
+# function to decide enxt step from process_query to dtaframe storage or internet research
+def decide_next_step(state: MessagesState):
+    last_message = state['messages'][-1].content
+    if isinstance(last_message, str) and last_message.endswith(".parquet"):  # Assuming the path is returned as a string
+        print("Last Message to Decide Next Step (db storage): ", last_message)
+        return "do_df_storage"
+    else:
+        print("Last Message to Decide Next Step (internet search): ", last_message)
+        return "do_internet_search"
 
 # ********************* ----------------------------------------------- *************************************
 ##### QUERY & EMBEDDINGS #####
@@ -407,11 +427,13 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
 # Main function to process the user query and return pandas dataframe and the user query dictionary structured by llm. here df_final will have chunks already done! cool!
 #def process_query(llm: ChatGroq, query: str, maximum_content_length: int, maximum_title_length: int, chunk_size: Optional[int], detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt) -> Tuple | Dict:
 #def process_query(llm: ChatGroq = groq_llm_mixtral_7b, query: str = UserInput.user_initial_input, maximum_content_length: int = FuncInputParams.maximum_content_length, maximum_title_length: int = FuncInputParams.maximum_title_length, chunk_size: Optional[int] = FuncInputParams.chunk_size_df, detect_prompt_template: Dict = detect_content_type_prompt, text_summary_prompt: str = summarize_text_prompt, title_summary_prompt: str = generate_title_prompt, final_df: pd.DataFrame = FuncOutputs.df_final) -> Tuple | Dict:
-def process_query(state: MessagesState):
+def process_query(state: MessagesState) -> Dict:
+    # get last state message
     messages = state['messages']
     print("messages from should_continue func: ", messages)
     last_message = messages[-1].content
     print("Last Message: ", last_message, type(last_message))
+    
     # variables
     query = last_message
     maximum_content_length = 200
@@ -445,17 +467,23 @@ def process_query(state: MessagesState):
         df_final = get_final_df(llm, is_url, content_dict["url"].strip(), maximum_content_length, maximum_title_length, chunk_size, text_summary_prompt, title_summary_prompt)
     else:
         # update state no_doc_but_text (thismeans that it is just a questiont hat can be answers combining llm answer and internet search for example)
-        state_custom.no_doc_but_simple_query_text = content_dict["text"]        
-        return {"message": f"No PDF nor URL found in the query. Content: {content_dict}. Therefore just answer to this user query: {content_dict['text']}"}
+        if content_dict["question"]:
+          query_reformulated_in_question = content_dict["question"]      
+          return {"messages": [{"role": "system", "content": query_reformulated_in_question}]}
+        else:
+          query_text = content_dict["question"]      
+          return {"messages": [{"role": "system", "content": query_text}]}
+ 
     
     #return df_finaldf_final, content_dict
+    
     # update state
 
-    df_serialized = df_final.to_json(orient='split')
-    print("DF SERIALIZED: ", df_serialized)
-    df_final = pd.read_json(df_serialized, orient='split')
-    print("DF DESERIALIZED: ", df_final)
-    return {"messages": [{"role": "system", "content": df_serialized}]}
+    df_saved_to_path = save_dataframe(df_final, "parsed_dataframes")
+    print("DF SAVED TO PATH: ", df_saved_to_path)
+    print("LOAD DF: ", load_dataframe(df_saved_to_path))
+
+    return {"messages": [{"role": "system", "content": df_saved_to_path}]}
 
 
 ## 2- STORE DOCUMENT DATA TO POSTGRESQL DATABASE
@@ -464,7 +492,7 @@ def process_query(state: MessagesState):
 store dataframe to DB by creating a custom table and by activating pgvector and insering the dataframe rows in it
 so here we will have different tables in the database (`conn`) so we will have the flexibility to delete the table entirely if not needed anymore
 """
-def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str) -> Dict[str, str]:
+def store_dataframe_to_db(state: MessagesState) -> Dict[str, str]:
     """
     Store a pandas DataFrame to a PostgreSQL table using psycopg2, avoiding duplicate records.
     
@@ -472,17 +500,29 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str) -> Dict[str, 
     df_final (pd.DataFrame): The DataFrame containing the data to store.
     table_name (str): The name of the table where data should be stored.
     """
-    # Establish a connection to the PostgreSQL database
-    try:
+
+    # get last message from states
+    messages = state['messages']
+    df_path = messages[-1].content
+    # get latest message from state and deserialize it
+    df_final = load_dataframe(df_path)
+    print("DF DESERIALIZED: ", df_final, type(df_final))
+    # get table name from virtual env
+    table_name = os.getenv("TABLE_NAME")
+    print("TABLE NAME: ", table_name)
+    
+    if type(df_final) == pd.DataFrame:
+      # Establish a connection to the PostgreSQL database
+      try:
         conn = connect_db()
         cursor = conn.cursor()
-    except Exception as e:
+      except Exception as e:
         print(f"Failed to connect to the database: {e}")
         StoreDftodbState.df_stored = False
-        return {"error": f"An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}
+        return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}}]}
 
-    # Ensure the table exists, if not, create it
-    try:
+      # Ensure the table exists, if not, create it
+      try:
         cursor.execute(sql.SQL("""
             CREATE TABLE IF NOT EXISTS {} (
                 id UUID PRIMARY KEY,
@@ -493,32 +533,32 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str) -> Dict[str, 
             );
         """).format(sql.Identifier(table_name)))
         conn.commit()
-    except Exception as e:
+      except Exception as e:
         print(f"Failed to create table {table_name}: {e}")
         cursor.close()
         conn.close()
         StoreDftodbState.df_stored = False
-        return {"error": f"An error occured while trying to 'create table if exist': {e}"}
+        return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to 'create table if exist': {e}"}}]}
 
-    # Ensure pgvector extension is available
-    try:
+      # Ensure pgvector extension is available
+      try:
         cursor.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS vector;"))
         conn.commit()
-    except Exception as e:
+      except Exception as e:
         print(f"Failed to enable pgvector extension: {e}")
         cursor.close()
         conn.close()
         StoreDftodbState.df_stored = False
-        return {"error": f"An error occured while trying to 'create extention vector in db': {e}"}
+        return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to 'create extention vector in db': {e}"}}]}
 
-    # Insert data into the table row by row, avoiding duplicates
-    for index, row in df_final.iterrows():
+      # Insert data into the table row by row, avoiding duplicates
+      for index, row in df_final.iterrows():
         try:
             # Check if the content already exists in the table
             cursor.execute(sql.SQL("""
                 SELECT COUNT(*) FROM {}
                 WHERE doc_name = {} AND content = {};
-            """).format(sql.Identifier(table_name), sql.Identifier(row["doc_name"]), sql.Identifier(row["content"])))
+            """).format(sql.Identifier(table_name), sql.Literal(row["doc_name"]), sql.Literal(row["content"])))
             
             count = cursor.fetchone()[0]
             
@@ -527,7 +567,7 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str) -> Dict[str, 
                 cursor.execute(sql.SQL("""
                     INSERT INTO {} (id, doc_name, title, content, retrieved)
                     VALUES ({}, {}, {}, {}, {})
-                """).format(sql.Identifier(table_name), sql.Identifier(row["id"]), sql.Identifier(row["doc_name"]), sql.Identifier(row["title"]), sql.Identifier(row["content"]), sql.Identifier(row["retrieved"])))
+                """).format(sql.Identifier(table_name), sql.Literal(row["id"]), sql.Literal(row["doc_name"]), sql.Literal(row["title"]), sql.Literal(row["content"]), sql.Literal(row["retrieved"])))
                 conn.commit()  # Commit the transaction if successful
             else:
                 print(f"Duplicate found for doc_name: {row['doc_name']}, content: {row['content']}. Skipping insertion.")
@@ -536,15 +576,20 @@ def store_dataframe_to_db(df_final: pd.DataFrame, table_name: str) -> Dict[str, 
             print(f"Error inserting row {index}: {e}")
             conn.rollback()  # Rollback in case of error for the current transaction
             StoreDftodbState.df_stored = False
-            return {"success": f"An error occured while trying to insert data in db: {e}"}
+            return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to insert data in db: {e}"}}]}
 
-    # Close the cursor and the connection
-    cursor.close()
-    conn.close()
+      # Close the cursor and the connection
+      cursor.close()
+      conn.close()
 
-    print("DataFrame successfully stored in the database.")
-    StoreDftodbState.df_stored = True
-    return {"success": f"Document quality data saved to PostgreSQL database table: {table_name}"}
+      print("DataFrame successfully stored in the database.")
+      StoreDftodbState.df_stored = True
+      return {"messages": [{"role": "system", "content": f"Document quality data saved to PostgreSQL database table: {table_name}"}]}
+
+    else:
+      no_pdf_or_webpage_get_query_text = messages[-1].content
+      print("No pdf or webpage therefore use query reformulated or raw query: ", no_pdf_or_webpage_get_query_text)
+      return {"messages": [{"role": "system", "content": f"{no_pdf_or_webpage_get_query_text.content.query}"}]}
 
 
 ## 3- EMBED ALL DATABASE SAVED DOC DATA TO VECTORDB
@@ -652,29 +697,35 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
 ## -5 PERFORM INTERNET SEARCH IF NO ANSWER FOUND IN REDIS OR PGVECTOR
 
 # function that check states to know if we perform internet search, should handle all the cases in which internet search can be called
-def internet_searching_job_nothing_retrieved(state: StateCustom, tool_llm: ChatGroq) -> str:
-  if state.nothing_retrieved == True:
-    """
-      Then here perform an internet search, so you will need the state having the user text query
-    """
-    user_query = state.no_doc_but_simple_query_text
-    response = tool_llm.invoke(user_query)
-    return response.content
-  #else:
-    
-    
 
-
-internet_search_tool = DuckDuckGoSearchRun()
-tool_internet = Tool(
-    name="duckduckgo_search",
-    description="Search DuckDuckGO for recent results.",
-    func=internet_search_tool.run,
-)
-internet = [tool_internet] # maybe we can put more tools in the list and agent will see which one to use reading doctrings
+# will be used as `llm_with_internet_search_tool(query)`
 llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools(internet)
-# OR
-internet_tool_node = ToolNode(internet)
+# OR `internet_tool_node = ToolNode(internet)`
+
+# search through internet and get 5 search results
+def internet_research_user_query(state: MessagesState):
+
+    query = state["messages"][-1].content  # Extract the last user query
+    
+    # Fill the prompt template
+    generate_from_empty_prompt["system"]["template"] = "You are an expert search engine."
+    generate_from_empty_prompt["human"]["template"] = "Find the most relevant information about: {query}"
+    generate_from_empty_prompt["human"]["input_variables"] = {"query": query}
+    
+    # Construct the prompt for the LLM
+    system_message = generate_from_empty_prompt["system"]["template"]
+    human_message = generate_from_empty_prompt["human"]["template"].format(**generate_from_empty_prompt["human"]["input_variables"])
+    ai_message = generate_from_empty_prompt["ai"]["template"]
+    
+    # Use the tool with the constructed prompt
+    search_results = llm_with_internet_search_tool([system_message, human_message, ai_message])
+    print("Result Search: ", search_results)
+    
+    # Process the search results (e.g., select the top result or combine summaries)
+    summary = search_results[:5]  # Take the top 5 results
+    
+    # Return the formatted message
+    return {"messages": [{"role": "assistant", "content": "\n".join(summary)}]}
 
 '''
 # Initialize states

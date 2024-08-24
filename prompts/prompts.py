@@ -105,7 +105,21 @@ generate_title_prompt =   {
   },
 }
 
-
+# for tools calls can be filled in the function or here create different ones
+generate_from_empty_prompt = {
+  "system": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
 
 
 

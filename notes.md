@@ -944,8 +944,73 @@ from langchain.prompts.chat import (
 - Use predict() when you need to generate a prediction from a model based on specific input. so here just for input/output from model
  
  
- # ISSUES
+# ISSUES
  
+## Database storage `''` vs  `""`
+
+- Here the issue is that the values are stored to db using double quotes `""` while those should be encapsulated in single quote `''`
+```bash
+Error inserting row 0: column "https://chikarahouses.com" does not exist
+LINE 3:                 WHERE doc_name = "https://chikarahouses.com"...
+                                         ^
+```
+
+- Here we get single quotes `''` for valeu stored in db and for `table_name` we can use sql.Identifier which will use `""`
+```sql
+cursor.execute(sql.SQL("""
+        INSERT INTO {} (id, doc_name, title, content, retrieved)
+        VALUES (%s, %s, %s, %s, %s)
+    """).format(sql.Identifier(table_name)), 
+    [row["id"], row["doc_name"], row["title"], row["content"], row["retrieved"]])
+    conn.commit()
+```
+
+## Data serialization saved to state which has limit of storage
+We can have large documents and we want to store those in db by creating a dataframe beforehands.
+This dataframe stored to state to pass it to the next node which is going to store it to the database.
+- But the dtaframe can be too large and we used JSON serialization but it is not optimal for size.
+- We are using for the moment parquet stored to memory which takes less space (pyarrow)
+- But instead of having different nodes to do those jobs we could just make that node do those two tasks parsing document and storing to db to prevent large state variables
+
+```python
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+# Serialize the dataframe to a Parquet format stored in memory
+def serialize_dataframe(df):
+    table = pa.Table.from_pandas(df)
+    sink = pa.BufferOutputStream()
+    pq.write_table(table, sink)
+    return sink.getvalue().to_pybytes()
+
+# Deserialize the dataframe from the Parquet format
+def deserialize_dataframe(data):
+    buffer = pa.BufferReader(data)
+    table = pq.read_table(buffer)
+    return table.to_pandas()
+```
+
+Attempting to serialize binary or non-UTF-8 encoded data into a field that expects text content, leading to encoding errors
+therefore, we need to find another solution to make it easy. I though using a file to store the dataframe and that is what we are going to do.
+- store df to file
+- store path location of that file in the lanngraph states message of the node.
+- this way we can have separate nodes for separate tasks
+
+```python
+import uuid
+
+def save_dataframe(df, directory="dataframes"):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    file_id = str(uuid.uuid4())
+    file_path = os.path.join(directory, f"{file_id}.parquet")
+    df.to_parquet(file_path)
+    return file_path
+
+def load_dataframe(file_path):
+    return pd.read_parquet(file_path)
+```
+
 ## PromptTemplate object
 One import used did not return a `PromptTemplate` but a `str` which is annoying
 - from langchain_core.prompts.prompt import PromptTemplate : type = `str`
@@ -1778,9 +1843,16 @@ def <func_name>(<arg_name>: <input_type> = <default_value_if_any>) -> <return_ty
   # callback==callback_function # will run after task is completed
 )
 
-StateGraph(DetectContentState, ParseDocuments, StoreDftodbState, ChunkAndEmbedDbdataState, RetrievedRedisVectordb)
 
-
+# Visualize graph
+```python
+# install
+sudo apt-get install graphviz graphviz-dev
+pip install pygraphviz
+# install and display graph command
+pip install ipython
+display(Image(app.get_graph().draw_png()))
+```
 
 
 
