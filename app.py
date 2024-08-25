@@ -38,12 +38,14 @@ from langchain.prompts import (
   HumanMessagePromptTemplate,
   AIMessagePromptTemplate
 )
-from app_tools.app_tools import internet
+from app_tools.app_tools import internet, internet_search_tool, internet_search_query
 from langchain_core.output_parsers import JsonOutputParser
 # for graph creation and management
 from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode
+# langchain agent
+from langchain.agents import AgentExecutor
 # for env. vars
 from dotenv import load_dotenv
 
@@ -699,7 +701,9 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
 # function that check states to know if we perform internet search, should handle all the cases in which internet search can be called
 
 # will be used as `llm_with_internet_search_tool(query)`
-llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools(internet)
+llm_with_internet_search_tool1 = groq_llm_mixtral_7b.bind_tools(internet)
+llm_with_internet_search_tool2 = groq_llm_mixtral_7b.bind_tools([internet_search_tool])
+llm_with_internet_search_tool3 = groq_llm_mixtral_7b.bind_tools([internet_search_query])
 # OR `internet_tool_node = ToolNode(internet)`
 
 # search through internet and get 5 search results
@@ -708,24 +712,53 @@ def internet_research_user_query(state: MessagesState):
     query = state["messages"][-1].content  # Extract the last user query
     
     # Fill the prompt template
-    generate_from_empty_prompt["system"]["template"] = "You are an expert search engine."
-    generate_from_empty_prompt["human"]["template"] = "Find the most relevant information about: {query}"
-    generate_from_empty_prompt["human"]["input_variables"] = {"query": query}
+    generate_from_empty_prompt["system"]["template"] = "You are an expert search engine and use the tool available to answer to user query."
+    generate_from_empty_prompt["human"]["template"] = f"Find the most relevant information about: {query}"
+    generate_from_empty_prompt["ai"]["template"] = ""
+    #generate_from_empty_prompt["human"]["input_variables"] = {"query": query}
     
     # Construct the prompt for the LLM
     system_message = generate_from_empty_prompt["system"]["template"]
-    human_message = generate_from_empty_prompt["human"]["template"].format(**generate_from_empty_prompt["human"]["input_variables"])
+    print("System Message: ", system_message)
+    human_message = generate_from_empty_prompt["human"]["template"]
+    print("Human Message: ", human_message)
     ai_message = generate_from_empty_prompt["ai"]["template"]
+
+    # Create the messages list
+    messages = [
+        SystemMessage(content=system_message),
+        HumanMessage(content=human_message),
+        #AIMessage(content=ai_message),
+    ]
+    print("Messages: ", messages, "\nLen Messages: ", len(messages))
     
     # Use the tool with the constructed prompt
-    search_results = llm_with_internet_search_tool([system_message, human_message, ai_message])
-    print("Result Search: ", search_results)
+    # first way of doing it asking llm only
+    #search_results = groq_llm_mixtral_7b.invoke(messages)
+    #print("Result Search: ", search_results)
     
-    # Process the search results (e.g., select the top result or combine summaries)
-    summary = search_results[:5]  # Take the top 5 results
+    # second way to do it using duckduckgo result
+    #results2 = internet_search_tool.run(query)
+    #print("Results2: ", results2)
     
-    # Return the formatted message
-    return {"messages": [{"role": "assistant", "content": "\n".join(summary)}]}
+    # third way using an agent?????
+    # Create an agent executor
+    agent_executor = AgentExecutor.from_agent_and_tools(agent=llm_with_internet_search_tool3, tools=[internet_search_query])
+    #result_agent = agent_executor.invoke(query)
+    #print("Result Agent: ", result_agent)
+
+    # Test the AgentExecutor directly
+    human_message = HumanMessage(content=query)
+
+    try:
+        result_agent = agent_executor.invoke(messages)
+        print("Result Agent:", result_agent)
+        # Return the formatted message
+        return {"messages": [{"role": "assistant", "content": result_agent}]}
+    except Exception as e:
+        print("Error during invocation:", e)
+
+
 
 '''
 # Initialize states

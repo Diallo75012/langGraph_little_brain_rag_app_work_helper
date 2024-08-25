@@ -161,7 +161,7 @@ workflow.add_node("get_user_input", get_user_input)
 workflow.add_node("dataframe_from_query", process_query)
 workflow.add_node("answer_user", answer_user)
 workflow.add_node("internet_search", internet_research_user_query)
-workflow.add_node("store_dataframe_to_db", store_dataframe_to_db)
+#workflow.add_node("store_dataframe_to_db", store_dataframe_to_db)
 
 #workflow.add.node("store_dataframe_to_db", store_dataframe_to_db)
 #workflow.add.node("chunk_and_embed_from_db_data", custom_chunk_and_embed_to_vectordb)
@@ -174,7 +174,7 @@ workflow.add_conditional_edges(
     "dataframe_from_query",  # Node where the decision is made
     decide_next_step,        # Function that makes the decision
     {
-        "do_df_storage": "store_dataframe_to_db",  # Node to store dataframe in DB
+        "do_df_storage": "answer_user",  # Node to store dataframe in DB
         "do_internet_search": "internet_search",            # Node to perform internet search
     }
 )
