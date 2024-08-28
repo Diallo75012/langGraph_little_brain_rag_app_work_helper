@@ -29,7 +29,8 @@ from langchain_community.tools import (
 from langchain_core.messages import (
   AIMessage,
   HumanMessage,
-  SystemMessage
+  SystemMessage,
+  ToolMessage
 )
 from langchain.prompts import (
   PromptTemplate,
@@ -38,7 +39,7 @@ from langchain.prompts import (
   HumanMessagePromptTemplate,
   AIMessagePromptTemplate
 )
-from app_tools.app_tools import internet, internet_search_tool, internet_search_query
+from app_tools.app_tools import tool_internet, internet_search_tool, internet_search_query
 from langchain_core.output_parsers import JsonOutputParser
 # for graph creation and management
 from langgraph.checkpoint import MemorySaver
@@ -46,6 +47,7 @@ from langgraph.graph import END, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode
 # langchain agent
 from langchain.agents import AgentExecutor
+from langgraph.prebuilt.tool_executor import ToolExecutor
 # for env. vars
 from dotenv import load_dotenv
 
@@ -203,7 +205,7 @@ workflow.add_conditional_edges(
 
 # We now add a normal edge from `tools` to `agent`.
 # This means that after `tools` is called, `agent` node is called next.
-workflow.add_edge("tools", 'agent')
+workflow.add_edge("tools", "agent")
 # print("Workflow add edge 'tools' -> 'agent': ", workflow)
 
 # Initialize memory to persist state between graph runs
@@ -241,6 +243,33 @@ final_state["messages"][-1].content
  - Have a function node that will just check the date and if 24h have passed it will reset the column retrieved in the database to False (for the moment we work with a TTL of 24h can be extended if needed so put the TTL as a function parameter that will be the same as in Redis). `from embedding_and_retrieval import clear_cache
 """
 ### HELPERS
+# function to beautify output for an ease of human creditizens reading
+def message_to_dict(message):
+    if isinstance(message, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
+        return {
+            "content": message.content,
+            "additional_kwargs": message.additional_kwargs,
+            "response_metadata": message.response_metadata if hasattr(message, 'response_metadata') else None,
+            "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None,
+            "usage_metadata": message.usage_metadata if hasattr(message, 'usage_metadata') else None,
+            "id": message.id,
+            "role": getattr(message, 'role', None),
+        }
+    return message
+
+def convert_to_serializable(data):
+    if isinstance(data, list):
+        return [convert_to_serializable(item) for item in data]
+    elif isinstance(data, dict):
+        return {k: convert_to_serializable(v) for k, v in data.items()}
+    elif isinstance(data, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
+        return message_to_dict(data)
+    return data
+
+def beautify_output(data):
+    serializable_data = convert_to_serializable(data)
+    return json.dumps(serializable_data, indent=4)
+
 # to format prompts
 def dict_to_tuple(d: Dict[str, str]) -> Tuple[Tuple[str, str], ...]:
     """
@@ -390,11 +419,12 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
   print("Df Final from library: ", df_final, type(df_final))
   
   # create csv files as log of what have been produced for demonstration and human verification to later improve prompts or workflow quality data extraction
+  # the normal flow won't use those logs but just use `df_final` to save it as `parquet` for efficiency in size and then saved to db later on
   if is_url:
-    with open("test_url_parser_df_output.csv", "w", encoding="utf-8") as f:
+    with open("./dataframes_csv/test_url_parser_df_output.csv", "w", encoding="utf-8") as f:
       df_final.to_csv(f, index=False)
   else:
-    with open("test_pdf_parser_df_output.csv", "w", encoding="utf-8") as f:
+    with open("./dataframes_csv/test_pdf_parser_df_output.csv", "w", encoding="utf-8") as f:
       df_final.to_csv(f, index=False)
   
   return df_final
@@ -422,6 +452,24 @@ def decide_next_step(state: MessagesState):
         print("Last Message to Decide Next Step (internet search): ", last_message)
         return "do_internet_search"
 
+def is_path_or_text(input_string: str) -> str:
+    """
+    Determines if the input string is a valid file path or just a text string.
+
+    Args:
+    input_string (str): The string to be checked.
+
+    Returns:
+    str: 'path' if the input is a valid file path, 'text' otherwise.
+    """
+    # Normalize the path to handle different OS path formats
+    normalized_path = os.path.normpath(input_string)
+    
+    # Check if the normalized path exists or has a valid directory structure
+    if os.path.exists(normalized_path) or os.path.isdir(os.path.dirname(normalized_path)):
+        return 'path'
+    else:
+        return 'text'
 # ********************* ----------------------------------------------- *************************************
 ##### QUERY & EMBEDDINGS #####
 
@@ -473,18 +521,13 @@ def process_query(state: MessagesState) -> Dict:
           query_reformulated_in_question = content_dict["question"]      
           return {"messages": [{"role": "system", "content": query_reformulated_in_question}]}
         else:
-          query_text = content_dict["question"]      
+          query_text = content_dict["text"]      
           return {"messages": [{"role": "system", "content": query_text}]}
  
-    
-    #return df_finaldf_final, content_dict
-    
-    # update state
 
     df_saved_to_path = save_dataframe(df_final, "parsed_dataframes")
     print("DF SAVED TO PATH: ", df_saved_to_path)
-    print("LOAD DF: ", load_dataframe(df_saved_to_path))
-
+    # update state
     return {"messages": [{"role": "system", "content": df_saved_to_path}]}
 
 
@@ -494,7 +537,7 @@ def process_query(state: MessagesState) -> Dict:
 store dataframe to DB by creating a custom table and by activating pgvector and insering the dataframe rows in it
 so here we will have different tables in the database (`conn`) so we will have the flexibility to delete the table entirely if not needed anymore
 """
-def store_dataframe_to_db(state: MessagesState) -> Dict[str, str]:
+def store_dataframe_to_db(state: MessagesState) -> Dict[str, Any]:
     """
     Store a pandas DataFrame to a PostgreSQL table using psycopg2, avoiding duplicate records.
     
@@ -520,8 +563,7 @@ def store_dataframe_to_db(state: MessagesState) -> Dict[str, str]:
         cursor = conn.cursor()
       except Exception as e:
         print(f"Failed to connect to the database: {e}")
-        StoreDftodbState.df_stored = False
-        return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}}]}
+        return {"messages": [{"role": "system", "content": f"error: An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}]}
 
       # Ensure the table exists, if not, create it
       try:
@@ -539,8 +581,7 @@ def store_dataframe_to_db(state: MessagesState) -> Dict[str, str]:
         print(f"Failed to create table {table_name}: {e}")
         cursor.close()
         conn.close()
-        StoreDftodbState.df_stored = False
-        return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to 'create table if exist': {e}"}}]}
+        return {"messages": [{"role": "system", "content": f"error: An error occured while trying to 'create table if exist': {e}"}]}
 
       # Ensure pgvector extension is available
       try:
@@ -550,8 +591,7 @@ def store_dataframe_to_db(state: MessagesState) -> Dict[str, str]:
         print(f"Failed to enable pgvector extension: {e}")
         cursor.close()
         conn.close()
-        StoreDftodbState.df_stored = False
-        return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to 'create extention vector in db': {e}"}}]}
+        return {"messages": [{"role": "system", "content": f"error: An error occured while trying to 'create extention vector in db': {e}"}]}
 
       # Insert data into the table row by row, avoiding duplicates
       for index, row in df_final.iterrows():
@@ -577,26 +617,30 @@ def store_dataframe_to_db(state: MessagesState) -> Dict[str, str]:
         except Exception as e:
             print(f"Error inserting row {index}: {e}")
             conn.rollback()  # Rollback in case of error for the current transaction
-            StoreDftodbState.df_stored = False
-            return {"messages": [{"role": "system", "content": {"error": f"An error occured while trying to insert data in db: {e}"}}]}
+            return {"messages": [{"role": "system", "content": f"error: An error occured while trying to insert data in db: {e}"}]}
 
       # Close the cursor and the connection
       cursor.close()
       conn.close()
 
       print("DataFrame successfully stored in the database.")
-      StoreDftodbState.df_stored = True
-      return {"messages": [{"role": "system", "content": f"Document quality data saved to PostgreSQL database table: {table_name}"}]}
+      return {"messages": [{"role": "system", "content": f"success: Document quality data saved to PostgreSQL database table: {table_name}"}]}
 
     else:
       no_pdf_or_webpage_get_query_text = messages[-1].content
       print("No pdf or webpage therefore use query reformulated or raw query: ", no_pdf_or_webpage_get_query_text)
-      return {"messages": [{"role": "system", "content": f"{no_pdf_or_webpage_get_query_text.content.query}"}]}
+      return {"messages": [{"role": "system", "content": f"text: {no_pdf_or_webpage_get_query_text}"}]}
 
 
 ## 3- EMBED ALL DATABASE SAVED DOC DATA TO VECTORDB
 # `COLLECTION_NAME` and `CONNECTION_STRING` should be recognized as it comes from 'lib_helpers.embedding_and_retrieval'
-def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECTION_NAME: str, CONNECTION_STRING: str) -> Dict[str, str]:
+def custom_chunk_and_embed_to_vectordb(state: MessagesState) -> Dict[str, Any]:
+
+  # vars
+  table_name: str = "test_table"
+  chunk_size: int = 500
+  collection_name: str = COLLECTION_NAME
+  connection_string: str = CONNECTION_STRING
   # Embed all documents in the database
   # function from module `lib_helpers.embedding_and_retrieval`
   # here we get List[Dict[str,Any]]
@@ -605,8 +649,7 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
   except Exception as e:
     conn.close()
     # update state
-    StateCustom.df_data_chunked_and_embedded = False
-    return {"error": f"An error occured while trying to fetch rows from db -> {e}"}
+    return {"messages": [{"role": "system", "content": f"error: An error occured while trying to fetch rows from db -> {e}"}]}
   # here we get List[List[Dict[str,Any]]]
   try:
     # chunk will be formatted only with uuid and content: `{'UUID': str(doc_id), 'content': content}` but here it is a `List[List[Dict[str,Any]]]`
@@ -614,25 +657,22 @@ def custom_chunk_and_embed_to_vectordb(table_name: str, chunk_size: int, COLLECT
   except Exception as e:
     conn.close()
     # update state
-    StateCustom.df_data_chunked_and_embedded = False
-    return {"error": f"An error occured while trying to create chunks -> {e}"}
+    return {"messages": [{"role": "system", "content": f"error: An error occured while trying to create chunks -> {e}"}]}
   # here we create the custom document and embed it
   try:
     for chunk_list in chunks:
       # here chunk_list is a `List[Dict[str,Any]]`
-      embed_all_db_documents(chunk_list, COLLECTION_NAME, CONNECTION_STRING) 
+      embed_all_db_documents(chunk_list, collection_name, connection_string) 
   except Exception as e:
     conn.close()
     # update state
-    StateCustom.df_data_chunked_and_embedded = False
-    return {"error": f"An error occured while trying to create custom docs and embed it -> {e}"}
+    return {"messages": [{"role": "system", "content": f"error: An error occured while trying to create custom docs and embed it -> {e}"}]}
   
   conn.close()
   # update state
-  state.df_data_chunked_and_embedded = True
   
-  return {"success": "database data fully embedded to vectordb"}
-    
+  return {"messages": [{"role": "system", "content": "success: database data fully embedded to vectordb"}]}
+   
 
 
 
@@ -700,10 +740,11 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
 
 # function that check states to know if we perform internet search, should handle all the cases in which internet search can be called
 
-# will be used as `llm_with_internet_search_tool(query)`
-llm_with_internet_search_tool1 = groq_llm_mixtral_7b.bind_tools(internet)
+# will be used as `llm_with_internet_search_tool(query)` : tool are  " internet_search_tool, tool_internet, internet_search_query]
+llm_with_internet_search_tool1 = groq_llm_mixtral_7b.bind_tools([tool_internet])
 llm_with_internet_search_tool2 = groq_llm_mixtral_7b.bind_tools([internet_search_tool])
-llm_with_internet_search_tool3 = groq_llm_mixtral_7b.bind_tools([internet_search_query])
+internet = [tool_internet]
+llm_with_internet_search_tool3 = groq_llm_mixtral_7b.bind_tools(internet)
 # OR `internet_tool_node = ToolNode(internet)`
 
 # search through internet and get 5 search results
@@ -743,15 +784,19 @@ def internet_research_user_query(state: MessagesState):
     
     # third way using an agent?????
     # Create an agent executor
-    agent_executor = AgentExecutor.from_agent_and_tools(agent=llm_with_internet_search_tool3, tools=[internet_search_query])
-    #result_agent = agent_executor.invoke(query)
-    #print("Result Agent: ", result_agent)
+    internet = [tool_internet]
+    agent_executor = AgentExecutor.from_agent_and_tools(agent=llm_with_internet_search_tool3, tools=internet)
+    
+    tool_executor = ToolExecutor(internet)
+    print("TYPE QUERY: ", type(query))
+    result_agent = tool_executor.invoke({"input":query})
+    print("Result Agent: ", result_agent)
 
     # Test the AgentExecutor directly
     human_message = HumanMessage(content=query)
 
     try:
-        result_agent = agent_executor.invoke(messages)
+        result_agent = agent_executor(messages)
         print("Result Agent:", result_agent)
         # Return the formatted message
         return {"messages": [{"role": "assistant", "content": result_agent}]}

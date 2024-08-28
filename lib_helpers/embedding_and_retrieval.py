@@ -156,7 +156,7 @@ def create_embedding_collection(all_docs: List[Document], collection_name: str, 
 def embed_all_db_documents(all_docs: List[Dict[str,Any]], collection_name: str, connection_string: str, embeddings: OllamaEmbeddings = embeddings) -> None|dict:
   # `all_docs` here is a parameter that is representing our chunk that we want to embed it has the inofrmationof several rows
   # `all_docs` is a `List[Dict[str,Any]]`
-  docs = [Document(page_content=json.dumps(all_doc)),]
+  docs = [Document(page_content=json.dumps(all_docs)),]
   print("DOCS: ", docs)
 
   # embed all those documents in the vectore db

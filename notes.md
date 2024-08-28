@@ -1855,6 +1855,143 @@ display(Image(app.get_graph().draw_png()))
 ```
 
 
+# Agent Tools Workflow
+
+Just use @tool decorator on any function and use ToolNode.
+Agent node which has binded tools will choose which tool is good to use and the next node ToolNode will just execute the tool choosen by the Agent which has already field the schema with the query and have the right schema for that tool to be executed by the ToolNode.
+Then save returned values to the state for easy graph workflow.
+
+```bash
+# query
+Do you need any help? any PDF doc or webpage to analyze? please search online about the latest restaurant opened in Azabu Juuban?
+
+# Step 1
+{'get_user_input': {'messages': ['please search online about the latest restaurant opened in Azabu Juuban?']}}
+
+# Step 2
+{'agent': {'messages': [AIMessage(content='', additional_kwargs={'tool_calls': [{'id': 'call_m6a0', 'function': {'arguments': '{"query": "latest restaurant opened in Azabu Juuban"}', 'name': 'search'}, 'type': 'function'}]}, response_metadata={'token_usage': {'completion_tokens': 34, 'prompt_tokens': 3180, 'total_tokens': 3214, 'completion_time': 0.11005241, 'prompt_time': 0.984584956, 'queue_time': 0.0012828750000000166, 'total_time': 1.094637366}, 'model_name': 'llama3-groq-70b-8192-tool-use-preview', 'system_fingerprint': 'fp_ee4b521143', 'finish_reason': 'tool_calls', 'logprobs': None}, id='run-77b04c0e-c49c-437f-9257-31ccd94ce4e8-0', tool_calls=[{'name': 'search', 'args': {'query': 'latest restaurant opened in Azabu Juuban'}, 'id': 'call_m6a0', 'type': 'tool_call'}], usage_metadata={'input_tokens': 3180, 'output_tokens': 34, 'total_tokens': 3214})]}}
+
+# Step 3
+{'tool_search_node': {'messages': [ToolMessage(content='{"messages": ["Fukasaka is a sushi restaurant that opened in March 2024, led by a chef who trained at renowned establishments like the Michelin-starred Sushi Hashimoto in Shintomicho. ... Azabu-juban Station Directions from station 5 min. walk from Azabu-juban Station Exit 1 ... Aoyama is a vibrant district where you can experience the latest trends, unique ... A main dish of yum pam, phu penang curry, kai chao mu sap or muta kai tote will satisfy the palate. This eatery also offers a course menu with desserts. Blue Papaya Thailand is located near the Tokyo Metro Nanboku Line Azabu-Juban Station. It provides dinner and lunch services Monday through Saturday. The world-renowned restaurant, which features cuisine that is uncommon in Japan, opened its doors with a menu developed by Ichiro Ozaki, the owner-chef of Azabu Juban Ozaki, a popular sushi kappo restaurant located on the first floor of the same building, to offer new Japanese-style vegan dishes. The restaurant is a 5-minute walk from Azabu-Juban Station and offers a stylish atmosphere with 19 seats available. The opening hours are from Tuesday to Sunday, 17:30 to 23:30, with the last order for food at 22:00 and for drinks at 22:30. The restaurant is closed on certain days of the month, specifically the first and third Sundays. At this ... The restaurant \\"Principio\\" is located in Azabu-Juban, Minato-ku, Tokyo, and is accessible on foot from Azabu-Juban Station. The interior of the restaurant has a cozy and tranquil atmosphere, with 5 tables and a total of 10 seats available."]}', name='search', tool_call_id='call_m6a0')]}}
+
+# intermediary print of the state messages
+Message state:  [HumanMessage(content='message initialization', id='dba33398-1603-4a31-8650-5ba76542f1aa'), HumanMessage(content='please search online about the latest restaurant opened in Azabu Juuban?', id='5b451ab8-c184-462e-beba-391e82701732'), AIMessage(content='', additional_kwargs={'tool_calls': [{'id': 'call_m6a0', 'function': {'arguments': '{"query": "latest restaurant opened in Azabu Juuban"}', 'name': 'search'}, 'type': 'function'}]}, response_metadata={'token_usage': {'completion_tokens': 34, 'prompt_tokens': 3180, 'total_tokens': 3214, 'completion_time': 0.11005241, 'prompt_time': 0.984584956, 'queue_time': 0.0012828750000000166, 'total_time': 1.094637366}, 'model_name': 'llama3-groq-70b-8192-tool-use-preview', 'system_fingerprint': 'fp_ee4b521143', 'finish_reason': 'tool_calls', 'logprobs': None}, id='run-77b04c0e-c49c-437f-9257-31ccd94ce4e8-0', tool_calls=[{'name': 'search', 'args': {'query': 'latest restaurant opened in Azabu Juuban'}, 'id': 'call_m6a0', 'type': 'tool_call'}], usage_metadata={'input_tokens': 3180, 'output_tokens': 34, 'total_tokens': 3214}), ToolMessage(content='{"messages": ["Fukasaka is a sushi restaurant that opened in March 2024, led by a chef who trained at renowned establishments like the Michelin-starred Sushi Hashimoto in Shintomicho. ... Azabu-juban Station Directions from station 5 min. walk from Azabu-juban Station Exit 1 ... Aoyama is a vibrant district where you can experience the latest trends, unique ... A main dish of yum pam, phu penang curry, kai chao mu sap or muta kai tote will satisfy the palate. This eatery also offers a course menu with desserts. Blue Papaya Thailand is located near the Tokyo Metro Nanboku Line Azabu-Juban Station. It provides dinner and lunch services Monday through Saturday. The world-renowned restaurant, which features cuisine that is uncommon in Japan, opened its doors with a menu developed by Ichiro Ozaki, the owner-chef of Azabu Juban Ozaki, a popular sushi kappo restaurant located on the first floor of the same building, to offer new Japanese-style vegan dishes. The restaurant is a 5-minute walk from Azabu-Juban Station and offers a stylish atmosphere with 19 seats available. The opening hours are from Tuesday to Sunday, 17:30 to 23:30, with the last order for food at 22:00 and for drinks at 22:30. The restaurant is closed on certain days of the month, specifically the first and third Sundays. At this ... The restaurant \\"Principio\\" is located in Azabu-Juban, Minato-ku, Tokyo, and is accessible on foot from Azabu-Juban Station. The interior of the restaurant has a cozy and tranquil atmosphere, with 5 tables and a total of 10 seats available."]}', name='search', id='74eb112e-76a8-428a-be4a-37bb9aed685b', tool_call_id='call_m6a0')]
+
+# Step 4
+{'answer_user': {'messages': [{'role': 'ai', 'content': '{"messages": ["Fukasaka is a sushi restaurant that opened in March 2024, led by a chef who trained at renowned establishments like the Michelin-starred Sushi Hashimoto in Shintomicho. ... Azabu-juban Station Directions from station 5 min. walk from Azabu-juban Station Exit 1 ... Aoyama is a vibrant district where you can experience the latest trends, unique ... A main dish of yum pam, phu penang curry, kai chao mu sap or muta kai tote will satisfy the palate. This eatery also offers a course menu with desserts. Blue Papaya Thailand is located near the Tokyo Metro Nanboku Line Azabu-Juban Station. It provides dinner and lunch services Monday through Saturday. The world-renowned restaurant, which features cuisine that is uncommon in Japan, opened its doors with a menu developed by Ichiro Ozaki, the owner-chef of Azabu Juban Ozaki, a popular sushi kappo restaurant located on the first floor of the same building, to offer new Japanese-style vegan dishes. The restaurant is a 5-minute walk from Azabu-Juban Station and offers a stylish atmosphere with 19 seats available. The opening hours are from Tuesday to Sunday, 17:30 to 23:30, with the last order for food at 22:00 and for drinks at 22:30. The restaurant is closed on certain days of the month, specifically the first and third Sundays. At this ... The restaurant \\"Principio\\" is located in Azabu-Juban, Minato-ku, Tokyo, and is accessible on foot from Azabu-Juban Station. The interior of the restaurant has a cozy and tranquil atmosphere, with 5 tables and a total of 10 seats available."]}'}]}}
+
+```
+
+- Step 1 Output: The user's query ("please search online about the latest restaurant opened in Azabu Juuban?") is captured and added to the MessagesState.
+
+- Step 2 Output: The agent node invokes the LLM with the query. The LLM identifies that it should use the search tool to handle this query, so it generates a tool call with the appropriate arguments (e.g., {'query': 'latest restaurant opened in Azabu Juuban'}). This step is crucial because it shows that the LLM successfully recognized that the search tool should be used and passed the correct query string to it.
+
+- Step 3 Output: The tool_search_node executes the search function using the query provided by the LLM. The search tool performs the internet search and returns the results.
+
+- Step 4 Output: The answer_user node takes the result of the internet search and prepares it for display to the user.
+
+
+eg. of tools:
+```python
+groq_llm_mixtral_7b = ChatGroq(
+    temperature=float(os.getenv("GROQ_TEMPERATURE")),
+    groq_api_key=os.getenv("GROQ_API_KEY"),
+    model_name="llama3-groq-70b-8192-tool-use-preview",
+    max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),
+)
+
+# some other tools defined
+tool
+def get_proverb(query: str, state: MessagesState = MessagesState()):
+  """Will transform user query into a funny proverb"""
+  system_message = SystemMessage(content="You are an expert in creating funny short proverbs from any query.")
+  human_message = HumanMessage(content=f"Create a funny proverb please: {query}")
+  response = groq_llm_mixtral_7b.invoke([system_message, human_message])
+  return {"messages": [response]}
+
+@tool
+def find_link_story(query: str, state: MessagesState = MessagesState()):
+  """Will find a link between user query and the planet Mars"""
+  system_message = SystemMessage(content="You are an expert in finding links between Mars planet and any query.")
+  human_message = HumanMessage(content=f"{query}")
+  response = groq_llm_mixtral_7b.invoke([system_message, human_message])
+  return {"messages": [response]}
+
+
+# Define the search tool
+internet_search_tool = DuckDuckGoSearchRun()
+tool_internet = Tool(
+    name="duckduckgo_search",
+    description="Search DuckDuckGO for recent results.",
+    func=internet_search_tool.run,
+)
+
+@tool
+def search(query: str, state: MessagesState = MessagesState()):
+    """Call to surf the web."""
+    search_results = internet_search_tool.run(query)
+    return {"messages": [search_results]}
+
+tool_search_node = ToolNode([get_proverb, find_link_story])
+
+# Bind the tool to the LLM
+llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([get_proverb, find_link_story])
+```
+
+# Function to have graph output in `.stream()` mode beautified
+```python
+# function to beautify output for an ease of human creditizens reading
+def message_to_dict(message):
+    if isinstance(message, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
+        return {
+            "content": message.content,
+            "additional_kwargs": message.additional_kwargs,
+            "response_metadata": message.response_metadata if hasattr(message, 'response_metadata') else None,
+            "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None,
+            "usage_metadata": message.usage_metadata if hasattr(message, 'usage_metadata') else None,
+            "id": message.id,
+            "role": getattr(message, 'role', None),
+        }
+    return message
+
+def convert_to_serializable(data):
+    if isinstance(data, list):
+        return [convert_to_serializable(item) for item in data]
+    elif isinstance(data, dict):
+        return {k: convert_to_serializable(v) for k, v in data.items()}
+    elif isinstance(data, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
+        return message_to_dict(data)
+    return data
+
+def beautify_output(data):
+    serializable_data = convert_to_serializable(data)
+    return json.dumps(serializable_data, indent=4)
+
+# Example of how to use this function
+count = 0
+for step in app.stream(
+    {"messages": [HumanMessage(content="message initialization")]},
+    config={"configurable": {"thread_id": 42}}):
+    count += 1
+    if "messages" in step:
+        print(f"Step {count}: {beautify_output(step['messages'][-1].content)}")
+    else:
+        print(f"Step {count}: {beautify_output(step)}")
+```
+
+
+# Next
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
+- incorporate the internet tool in the graph
+- graph accepts x3 states but we will only use here `MessagesStates` already present in LangGraph library. We could create other states using `NewState(TypeDict)` but we will keep it simple in this project
+- delete `parquet` files (`df_final` compacted) after they have been processed and saved to db to save space and not have file building up and taking space
+- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+
+
+
+
+
+
 
 
 

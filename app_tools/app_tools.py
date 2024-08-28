@@ -32,9 +32,6 @@ groq_llm_llama3_70b_tool_use = ChatGroq(temperature=float(os.getenv("GROQ_TEMPER
 groq_llm_gemma_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_GEMMA_7B"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 
 
-# can put more tools in the list and agent will see which one to use reading doctrings
-internet = [tool_internet]
-
 # using `StructuredTool`
 class UseQuery(BaseModel):
   query: str = Field(default="{query}", description="use query that need to be search through the internet to get more information about it and answer to user")
@@ -56,8 +53,10 @@ internet_search_query = StructuredTool.from_function(
   # coroutine= ... <- you can specify an async method if desired as well
   # callback==callback_function # will run after task is completed
 )
+
+
 # will be used as `llm_with_internet_search_tool(query)`
-llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools(internet)
+llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([internet_search_tool, tool_internet, internet_search_query])
 
 
 
