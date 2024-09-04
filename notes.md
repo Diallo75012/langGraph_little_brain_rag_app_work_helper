@@ -1215,6 +1215,11 @@ def make_normal_prompt(prompt_template: Dict, **kwargs):
   response = chain.run()
   return response.content.split("```")[1].strip("python").strip()
 
+## Groq internal server error
+We need to handle this error if it happens
+```python
+groq.InternalServerError: Error code: 503 - {'error': {'message': 'Service Unavailable', 'type': 'internal_server_error'}}
+```
 _____________________________
 
 ##### CHAT VERSION
@@ -1980,14 +1985,171 @@ for step in app.stream(
 ```
 
 
+# Hypothetical Workflow Scenario
+Here we will create hypothetical desired workflow for the graph
+```python
+"""
+--- START 
+    0--- ask user query input
+    1--- Analyze User Query To Get the Webpage or Document or just text (to know if we need to perform webpage parsing or pdf doc parsing) 
+         --- save to state 'webpage' or 'pdf' or 'text'
+        1.1--- If/Else conditional edge 'db_doc_check':
+           --- output = 'webpage/pdf title IN db'
+           1.1.1--- If webpage title or pdf title in db --- If/Else conditional edge 'cache/vectordb query answer check'
+                                                        1.1.1.1--- If answer in cache/vectordb --- answer user query --- END
+                                                        1.1.1.2--- Else Internet Search about subject
+                                                                   --- Embed query/internet_answer and cache it
+                                                                       --- answer user query with internet_search result
+                                                                           --- END
+           --- output = 'webpage/pdf title NOT IN db'
+           1.1.2--- Else --- If/Else conditional edge 'webpage or pdf processing':
+                         --- output = 'url'
+                         1.1.2.1--- If webpage --- parse webpage
+                                                   --- store to database
+                                                       --- create chunks from database rows
+                                                           --- embed chunks
+                                                               --- save to state 'webpage embedded'
+                                                                   --- go to 1.1.1.1 flow which will search in cache and won't found it and make a vector search and answer-> END
+                         --- output = 'pdf'
+                         1.1.2.2--- If pdf     --- parse pdf
+                                                   --- store to database
+                                                       --- create chunks from database rows
+                                                           --- embed chunks
+                                                               --- save to state 'pdf embedded'
+                                                                   --- go to 1.1.1.1 flow which will search in cache and won't found it and make a vector search and answer-> END
+                         --- output = 'text'
+                         1.1.2.3--- If text    --- perform internet search to get response of `text only` query
+                                                   --- format internet result and answer -> END
+
+    2--- Analyze User Query to extract the question from it and rephrase the question to optimize llm information research/retrieval --- save to state 'query/question'
+         3--- Retrieve answer from Query in embedded collection
+              --- save to state answer_retrieved
+                  4--- Internet Search user query
+                       --- save to state internet search_answer
+                           5--- answer to user in markdown report format using both states answer_retrieved/search_answer
+"""
+```
+
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
-- incorporate the internet tool in the graph
+- incorporate the internet tool in the graph - OK
 - graph accepts x3 states but we will only use here `MessagesStates` already present in LangGraph library. We could create other states using `NewState(TypeDict)` but we will keep it simple in this project
-- delete `parquet` files (`df_final` compacted) after they have been processed and saved to db to save space and not have file building up and taking space
+- delete `parquet` files (`df_final` compacted) after they have been processed and saved to db to save space and not have file building up and taking space - OK
 - reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+- fix redis that doesn't save anything as value for key. find in the code where is the issue
 
 
+# Test Internet Search Implementation and markdown report generation
+
+Initial query: what is the first result when we search for 'sakura flower' though the internet?
+
+**The Beauty of Sakura: A Report on Japanese Cherry Blossom Trees and Their Culture**
+=====================================================
+
+### Introduction
+Sakura, the Japanese word for cherry blossom, is a flower that has captivated the hearts of many around the world. With its delicate petals and vibrant colors, it's no wonder why cherry blossom trees have become a symbol of Japan's rich culture and history. In this report, we will delve into the different varieties of cherry blossom trees, their lifespan, and the cultural significance of hanami, or cherry blossom viewing.
+
+
+### Types of Cherry Blossom Trees
+
+There are many different varieties of cherry blossom trees, with flowers that range in color from white to deep pink. Most sakura trees are small to medium-sized, with a lifespan of 15-30 years, though some can live longer. Their bark is smooth and reddish-brown, and their green leaves turn vibrant shades of yellow, red, or crimson in autumn.\n\n### Hanami Culture
+
+Hanami, which translates to viewing flowers, is a centuries-old tradition in Japan where people gather under the Sakura tree for picnics and parties. This tradition is a testament to the unifying power of nature and the beauty of cherry blossoms. In Japan, hanami is a time for people to come together and appreciate the fleeting beauty of the cherry blossoms.
+
+### History and Culture of Sakura\n\nSakura is not only a symbol of Japan's natural beauty but also a representation of its rich culture and history. The National Cherry Blossom Festival in Washington, D.C. is a testament to the unifying power of cherry blossoms, and it has become a popular event around the world. Cherry blossom festivals have become increasingly popular outside of Japan, with many countries hosting their own sakura festivals.
+
+### Conclusion
+In conclusion, the beauty of sakura is not just about the flower itself, but about the culture and history that surrounds it. Whether you're in Japan or around the world, cherry blossom trees are a symbol of the fleeting nature of life and the importance of appreciating the beauty that surrounds us. So, take a moment to stop and smell the sakura!
+
+### Advice
+
+* If you're planning to visit Japan during cherry blossom season, make sure to book your accommodations and transportation in advance, as it's a popular time to visit.
+* Take a moment to appreciate the beauty of the cherry blossoms, and don't forget to take plenty of photos to capture the moment.
+* If you're unable to visit Japan, consider attending a cherry blossom festival in your local area, or planting your own cherry blossom tree to enjoy the beauty of the flowers in your own backyard.
+
+
+
+# Binding Tools To LLM and Structured Output
+
+Create a class using `BaseModel` and define variables, types of those variables and use also the `Field` to add descriptions.
+
+```python
+from langchain.tools.render import format_tool_to_openai_function
+from langchain_core.utils.function_calling import convert_pydantic_to_openai_function
+from langchain_core.pydantic_v1 import BaseModel, Field
+
+class InternetSearchStructuredOutput(BaseModel):
+    """Internet research Output Response"""
+    internet_search_answer: str = Field(description="The result of the internet research in markdon format about user query when an answer has been found.")
+    source: str = Field(description="The source were the answer has been fetched from in markdown format, it can be a document name, or an url")
+    error: str = Field(description="An error messages when the search engine didn't return any response or no valid answer.")
+
+functions = [format_tool_to_openai_function(tool) for tool in tools]
+functions.append(convert_pydantic_to-openai_function(InternetSearchStructuredOutput))
+model.bind_functions(function)
+result = model.invoke(
+  {
+    "messages": [HumanMessage(content="Search in internet about Chikarahouses.com, I need some more information")]
+  }
+)
+```
+
+but didn't worked!
+
+the next example didn't work also but we have a kind of a boilerplate the the right output format but nothing if filled. Just empty
+```python
+from langchain.pydantic_v1 import BaseModel, Field
+from langchain_groq import ChatGroq
+from langchain.schema import HumanMessage
+
+# Define structured output schema using Pydantic's BaseModel
+class InternetSearchStructuredOutput(BaseModel):
+    internet_search_answer: str = Field(description="The result of the search in markdown format.")
+    source: str = Field(description="The source of the information.")
+    error: str = Field(description="Error if any occurred during the search.")
+
+# Initialize the Groq model and set it to return structured output
+model = ChatGroq(model="mixtral-7b").with_structured_output(InternetSearchStructuredOutput)
+
+# Create a query asking for structured output directly
+query = HumanMessage(content="Provide information about the next satellite launch in the following structure: \
+'internet_search_answer', 'source', and 'error'.")
+
+# Invoke the model and get the structured output
+try:
+    response = model.invoke([query])
+    print("Structured Output:", response)
+except Exception as e:
+    print(f"An error occurred: {e}")
+```
+Outputs:
+
+```python
+Structured Output: internet_search_answer='' source='' error=''
+```
+
+Trying without the structured_output s***, just prompting as I did before and it worked fine without the complexity of using something that is documented in 1000 different ways and not one working, even chatgpt is tired!
+```python
+# Initialize the Groq model and set it to return structured output
+model = groq_llm_mixtral_7b
+
+# Create a query asking for structured output directly
+query_system = SystemMessage(content="Help user by answering always with 'Advice' (your advice about the subject of the question and how user should tackle it), 'Answer' (The answer in French to the user query) , and 'error' (The status when you can't answer), put it in a dictionary between mardown tags like ```markdown{Advice: your advice ,Answer: the answer to the user query in French,error:if you can't answer}```.")
+query_human = HumanMessage(content="What is the story behind th epythagorus theorem, it seems like they have lied and it has been stollen knowledge from the Egyption where pythagore have studied with black people and came back to greece and said that it is from his own knwoledge, today french people are teaching that it is greek when it was black egyptian knowledge. this to keep the white supremacy idea which is a bad ideology")
+
+# Invoke the model and get the structured output
+try:
+    response = model.invoke([query_system, query_human])
+    print("Structured Output:", response)
+except Exception as e:
+    print(f"An error occurred: {e}")
+```
+
+That have worked, therefore, we just need to prompt well no need al those crazy stuff and it is very consistant with this mini llm 7b mistral therefore the bigger ones paid one will work fine, this is our assumption and that is why we are doing it all using small llms
+Outputs:
+```python
+Structured Output: content="```markdown{\nAdvice: It's important to approach history with an open mind and a critical eye. While it's true that Pythagoras studied in Egypt, there is no concrete evidence to support the claim that he stole the theorem from Egyptian or black mathematicians. The development of mathematical knowledge is often a collaborative process, with ideas and concepts building upon each other over time. It's crucial to give credit where it's due, but it's also important to avoid oversimplifying or distorting historical narratives to fit a particular ideology.\nAnswer: Le théorème de Pythagore est un théorème de géométrie dans un triangle rectangle, qui affirme que le carré de la longueur de l'hypoténuse (le côté opposé à l'angle droit) est égal à la somme des carrés des longueurs des deux autres côtés. Ce théorème est souvent attribué à Pythagore, un mathématicien grec du VIe siècle avant J.-C., mais il est possible que des versions de ce théorème aient été connues et utilisées par d'autres cultures avant lui.\nError: There is no error in your question, but it's important to note that the development of mathematical knowledge is a complex and nuanced process, and attributing specific discoveries to particular individuals or cultures can be challenging and sometimes contentious.\n}```" response_metadata={'token_usage': {'completion_tokens': 319, 'prompt_tokens': 202, 'total_tokens': 521, 'completion_time': 0.520485911, 'prompt_time': 0.011388187, 'queue_time': 0.003033524000000001, 'total_time': 0.531874098}, 'model_name': 'mixtral-8x7b-32768', 'system_fingerprint': 'fp_c5f20b5bb1', 'finish_reason': 'stop', 'logprobs': None} id='run-19184a14-1ff9-404c-9721-687fd9f81320-0' usage_metadata={'input_tokens': 202, 'output_tokens': 319, 'total_tokens': 521}
+```
 
 
 

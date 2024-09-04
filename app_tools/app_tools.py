@@ -4,6 +4,8 @@ from langchain_groq import ChatGroq
 # one is @tool decorator and the other Tool class
 from langchain_core.tools import tool, Tool
 from langchain.tools import StructuredTool
+from langgraph.graph import MessagesState
+from langgraph.prebuilt import ToolNode
 from langchain_community.tools import (
   # Run vs Results: Results have more information
   DuckDuckGoSearchRun,
@@ -12,13 +14,6 @@ from langchain_community.tools import (
 from langchain.pydantic_v1 import BaseModel, Field
 from dotenv import load_dotenv
 
-
-internet_search_tool = DuckDuckGoSearchRun()
-tool_internet = Tool(
-    name="duckduckgo_search",
-    description="Search DuckDuckGO for recent results.",
-    func=internet_search_tool.run,
-)
 
 # load env vars
 load_dotenv(dotenv_path='.env', override=False)
@@ -31,7 +26,7 @@ groq_llm_llama3_70b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")),
 groq_llm_llama3_70b_tool_use = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_70B_TOOL_USE"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 groq_llm_gemma_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_GEMMA_7B"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 
-
+'''
 # using `StructuredTool`
 class UseQuery(BaseModel):
   query: str = Field(default="{query}", description="use query that need to be search through the internet to get more information about it and answer to user")
@@ -54,10 +49,35 @@ internet_search_query = StructuredTool.from_function(
   # callback==callback_function # will run after task is completed
 )
 
+internet_search_tool = DuckDuckGoSearchRun()
+tool_internet = Tool(
+    name="duckduckgo_search",
+    description="Search DuckDuckGO for recent results.",
+    func=internet_search_tool.run,
+)
 
 # will be used as `llm_with_internet_search_tool(query)`
 llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([internet_search_tool, tool_internet, internet_search_query])
 
+
+# TOOLS
+internet_search_tool = DuckDuckGoSearchRun()
+tool_internet = Tool(
+    name="duckduckgo_search",
+    description="Search DuckDuckGO for recent results.",
+    func=internet_search_tool.run,
+)
+'''
+
+@tool
+def search(query: str, state: MessagesState = MessagesState()):
+    """Call to surf the web."""
+    search_results = internet_search_tool.run(query)
+    return {"messages": [search_results]}
+
+tool_search_node = ToolNode([search])
+
+llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([search]) 
 
 
 

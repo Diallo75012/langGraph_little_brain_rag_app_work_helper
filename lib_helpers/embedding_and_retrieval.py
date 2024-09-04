@@ -119,6 +119,7 @@ def fetch_documents(table_name: str) -> List[Dict[str, Any]]:
     cursor = conn.cursor()
     # here can customize using the extra columns that we have in the db and this will help create the object to embed
     #cursor.execute("SELECT id, doc_name, title, content FROM documents ORDER BY id")
+    # Indexes for rows: 0-id 1-doc_name 2-title 3-content
     cursor.execute(sql.SQL("SELECT id, doc_name, title, content FROM {} ORDER BY id;").format(sql.Identifier(table_name)))
     rows = cursor.fetchall()
     cursor.close()

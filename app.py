@@ -39,7 +39,12 @@ from langchain.prompts import (
   HumanMessagePromptTemplate,
   AIMessagePromptTemplate
 )
-from app_tools.app_tools import tool_internet, internet_search_tool, internet_search_query
+from app_tools.app_tools import (
+  #import tool_internet, internet_search_tool, internet_search_query
+  # internet node & internet llm binded tool
+  tool_search_node,
+  llm_with_internet_search_tool
+)
 from langchain_core.output_parsers import JsonOutputParser
 # for graph creation and management
 from langgraph.checkpoint import MemorySaver
@@ -92,6 +97,7 @@ from lib_helpers.embedding_and_retrieval import (
   connect_db,
   embeddings
 )
+from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail
 # STATES
 from app_states.app_graph_states import StateCustom
 # DOCKER REMOTE CODE EXECUTION
@@ -158,12 +164,12 @@ def should_continue(state: MessagesState) -> Literal["tools", END]:
     messages = state['messages']
     # print("messages from should_continue func: ", messages)
     last_message = messages[-1]
-    # print("last message from should_continue func: ", last_message)
+    # print("last message from should_continue : ", last_message)
     # If the LLM makes a tool call, then we route to the "tools" node
     if last_message.tool_calls:
         # print("Tool called!")
         return "tools"
-    # Otherwise, we stop (reply to the user)
+    # Otherwise, we stop (reply to the user)func
     # print("Tool not called returning answer to user.")
     return END
 
@@ -257,6 +263,7 @@ def message_to_dict(message):
         }
     return message
 
+
 def convert_to_serializable(data):
     if isinstance(data, list):
         return [convert_to_serializable(item) for item in data]
@@ -326,6 +333,7 @@ def is_url_or_pdf(input_string: str) -> str:
         )
 
         # Check if it's a URL
+        #if input_string.lower().startswith("https://") or input_string.lower().startswith("http://"):
         if url_pattern.match(input_string):
             print("It was an URL!")
             return "url"
@@ -407,10 +415,12 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
 
   # Generate metadata and add UUID and retrieved fields
   df['id'] = [str(uuid4()) for _ in range(len(df))]
+  
   if is_url:
     df['doc_name'] = df['url']
   else:
     df['doc_name'] = df['document']
+  
   df['content'] = df['summary']
   df['retrieved'] = False
 
@@ -442,7 +452,24 @@ def save_dataframe(df, directory="parsed_dataframes"):
 def load_dataframe(file_path):
     return pd.read_parquet(file_path)
 
-# function to decide enxt step from process_query to dtaframe storage or internet research
+# delete files at certain path
+def delete_parquet_file(file_path: str) -> None:
+  """
+  Deletes the specified parquet file from the filesystem.
+
+  Args:
+  file_path (str): The path to the parquet file to be deleted.
+  """
+  try:
+    if os.path.exists(file_path):
+      os.remove(file_path)
+      print(f"File {file_path} has been deleted.")
+    else:
+      print(f"File {file_path} does not exist.")
+  except Exception as e:
+    print(f"Error occurred while deleting file {file_path}: {e}")
+
+# function to decide next step from process_query to dtaframe storage or internet research
 def decide_next_step(state: MessagesState):
     last_message = state['messages'][-1].content
     if isinstance(last_message, str) and last_message.endswith(".parquet"):  # Assuming the path is returned as a string
@@ -470,6 +497,7 @@ def is_path_or_text(input_string: str) -> str:
         return 'path'
     else:
         return 'text'
+
 # ********************* ----------------------------------------------- *************************************
 ##### QUERY & EMBEDDINGS #####
 
@@ -480,8 +508,10 @@ def is_path_or_text(input_string: str) -> str:
 def process_query(state: MessagesState) -> Dict:
     # get last state message
     messages = state['messages']
-    print("messages from should_continue func: ", messages)
+    print("messages from should_continue func {process_query}: ", messages)
     last_message = messages[-1].content
+    if "nothing_in_cache_nor_vectordb" in last_message:
+      last_message = last_message.split(":")[1].strip()
     print("Last Message: ", last_message, type(last_message))
     
     # variables
@@ -538,98 +568,127 @@ store dataframe to DB by creating a custom table and by activating pgvector and 
 so here we will have different tables in the database (`conn`) so we will have the flexibility to delete the table entirely if not needed anymore
 """
 def store_dataframe_to_db(state: MessagesState) -> Dict[str, Any]:
-    """
-    Store a pandas DataFrame to a PostgreSQL table using psycopg2, avoiding duplicate records.
+  """
+  Store a pandas DataFrame to a PostgreSQL table using psycopg2, avoiding duplicate records.
+  Ask to user when document already exist if user want to update records or not.
+  Deletes the `.parquet` file for storage efficiency, when the dataframe is saved to db or user decides to not update the db records.
     
-    Args:
-    df_final (pd.DataFrame): The DataFrame containing the data to store.
-    table_name (str): The name of the table where data should be stored.
-    """
+  Args:
+  state MessagesState: The Graph stored messages from one node to another
+  
+  Returns:
+  messages Dict0[str, Any]: a dictionary that updates the state messages by adding a new one reflecting this node function result passed to next node.  
+  """
 
-    # get last message from states
-    messages = state['messages']
-    df_path = messages[-1].content
-    # get latest message from state and deserialize it
-    df_final = load_dataframe(df_path)
-    print("DF DESERIALIZED: ", df_final, type(df_final))
-    # get table name from virtual env
-    table_name = os.getenv("TABLE_NAME")
-    print("TABLE NAME: ", table_name)
+  # get last message from states
+  messages = state['messages']
+  df_path = messages[-1].content
+  # get latest message from state and deserialize it
+  df_final = load_dataframe(df_path)
+  print("DF DESERIALIZED: ", df_final, type(df_final))
+  # get table name from virtual env
+  table_name = os.getenv("TABLE_NAME")
+  print("TABLE NAME: ", table_name)
     
-    if type(df_final) == pd.DataFrame:
-      # Establish a connection to the PostgreSQL database
-      try:
-        conn = connect_db()
-        cursor = conn.cursor()
-      except Exception as e:
-        print(f"Failed to connect to the database: {e}")
-        return {"messages": [{"role": "system", "content": f"error: An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}]}
+  if type(df_final) == pd.DataFrame:
+    # Establish a connection to the PostgreSQL database
+    try:
+      conn = connect_db()
+      cursor = conn.cursor()
+    except Exception as e:
+      print(f"Failed to connect to the database: {e}")
+      return {"messages": [{"role": "system", "content": f"error: An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}]}
 
-      # Ensure the table exists, if not, create it
-      try:
-        cursor.execute(sql.SQL("""
-            CREATE TABLE IF NOT EXISTS {} (
-                id UUID PRIMARY KEY,
-                doc_name TEXT,
-                title TEXT,
-                content TEXT,
-                retrieved BOOLEAN
-            );
-        """).format(sql.Identifier(table_name)))
-        conn.commit()
-      except Exception as e:
-        print(f"Failed to create table {table_name}: {e}")
-        cursor.close()
-        conn.close()
-        return {"messages": [{"role": "system", "content": f"error: An error occured while trying to 'create table if exist': {e}"}]}
-
-      # Ensure pgvector extension is available
-      try:
-        cursor.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS vector;"))
-        conn.commit()
-      except Exception as e:
-        print(f"Failed to enable pgvector extension: {e}")
-        cursor.close()
-        conn.close()
-        return {"messages": [{"role": "system", "content": f"error: An error occured while trying to 'create extention vector in db': {e}"}]}
-
-      # Insert data into the table row by row, avoiding duplicates
-      for index, row in df_final.iterrows():
-        try:
-            # Check if the content already exists in the table
-            cursor.execute(sql.SQL("""
-                SELECT COUNT(*) FROM {}
-                WHERE doc_name = {} AND content = {};
-            """).format(sql.Identifier(table_name), sql.Literal(row["doc_name"]), sql.Literal(row["content"])))
-            
-            count = cursor.fetchone()[0]
-            
-            if count == 0:
-                # If no duplicate found, insert the row
-                cursor.execute(sql.SQL("""
-                    INSERT INTO {} (id, doc_name, title, content, retrieved)
-                    VALUES ({}, {}, {}, {}, {})
-                """).format(sql.Identifier(table_name), sql.Literal(row["id"]), sql.Literal(row["doc_name"]), sql.Literal(row["title"]), sql.Literal(row["content"]), sql.Literal(row["retrieved"])))
-                conn.commit()  # Commit the transaction if successful
-            else:
-                print(f"Duplicate found for doc_name: {row['doc_name']}, content: {row['content']}. Skipping insertion.")
-
-        except Exception as e:
-            print(f"Error inserting row {index}: {e}")
-            conn.rollback()  # Rollback in case of error for the current transaction
-            return {"messages": [{"role": "system", "content": f"error: An error occured while trying to insert data in db: {e}"}]}
-
-      # Close the cursor and the connection
+    # Ensure the table exists, if not, create it
+    try:
+      cursor.execute(sql.SQL("""
+        CREATE TABLE IF NOT EXISTS {} (
+          id UUID PRIMARY KEY,
+          doc_name TEXT,
+          title TEXT,
+          content TEXT,
+          retrieved BOOLEAN
+        );
+      """).format(sql.Identifier(table_name)))
+      conn.commit()
+    except Exception as e:
+      print(f"Failed to create table {table_name}: {e}")
       cursor.close()
       conn.close()
+      return {"messages": [{"role": "system", "content": f"error: An error occured while trying to 'create table if exist': {e}"}]}
 
-      print("DataFrame successfully stored in the database.")
-      return {"messages": [{"role": "system", "content": f"success: Document quality data saved to PostgreSQL database table: {table_name}"}]}
+    # Ensure pgvector extension is available
+    try:
+      cursor.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS vector;"))
+      conn.commit()
+    except Exception as e:
+      print(f"Failed to enable pgvector extension: {e}")
+      cursor.close()
+      conn.close()
+      return {"messages": [{"role": "system", "content": f"error: An error occured while trying to 'create extention vector in db': {e}"}]}
 
-    else:
-      no_pdf_or_webpage_get_query_text = messages[-1].content
-      print("No pdf or webpage therefore use query reformulated or raw query: ", no_pdf_or_webpage_get_query_text)
-      return {"messages": [{"role": "system", "content": f"text: {no_pdf_or_webpage_get_query_text}"}]}
+    # Check if the document already exists in the database
+    try:
+      cursor.execute(sql.SQL("""
+        SELECT COUNT(*) FROM {}
+        WHERE doc_name = {};
+      """).format(sql.Identifier(table_name), sql.Literal(df_final['doc_name'][0])))
+      doc_exists = cursor.fetchone()[0] > 0
+
+      if doc_exists:
+        user_input = input("Document already present in the database. Do you want to update it? (yes/no): ").strip().lower()
+        if user_input != 'yes':
+          print("Document already in the database, user chose not to update. Can now perform retrieval on document information.")
+          # delete the dataframe stored as parquet file
+          delete_parquet_file(df_path)
+          return {"messages": [{"role": "system", "content": "success: Document already in the database, user chose not to update. Retrieval can be performed"}]}
+
+    except Exception as e:
+      print(f"Error checking for existing document: {e}")
+      cursor.close()
+      conn.close()
+      return {"messages": [{"role": "system", "content": f"error: An error occurred while checking for existing document in DB: {e}"}]}
+
+    # Insert data into the table row by row, avoiding duplicates
+    for index, row in df_final.iterrows():
+      try:
+        # Check if the content already exists in the table
+        cursor.execute(sql.SQL("""
+          SELECT COUNT(*) FROM {}
+          WHERE doc_name = {} AND content = {};
+        """).format(sql.Identifier(table_name), sql.Literal(row["doc_name"]), sql.Literal(row["content"])))
+            
+        count = cursor.fetchone()[0]
+            
+        if count == 0:
+          # If no duplicate found, insert the row
+          cursor.execute(sql.SQL("""
+            INSERT INTO {} (id, doc_name, title, content, retrieved)
+            VALUES ({}, {}, {}, {}, {})
+          """).format(sql.Identifier(table_name), sql.Literal(row["id"]), sql.Literal(row["doc_name"]), sql.Literal(row["title"]), sql.Literal(row["content"]), sql.Literal(row["retrieved"])))
+          conn.commit()  # Commit the transaction if successful
+        else:
+          print(f"Duplicate found for doc_name: {row['doc_name']}, content: {row['content']}. Skipping insertion.")
+
+      except Exception as e:
+        print(f"Error inserting row {index}: {e}")
+        conn.rollback()  # Rollback in case of error for the current transaction
+        return {"messages": [{"role": "system", "content": f"error: An error occured while trying to insert data in db: {e}"}]}
+
+    # Close the cursor and the connection
+    cursor.close()
+    conn.close()
+
+    print("DataFrame successfully stored in the database.")
+    # delete the dataframe stored as parquet file
+    delete_parquet_file(df_path)
+
+    return {"messages": [{"role": "system", "content": f"success: Document quality data saved to PostgreSQL database table: {table_name}"}]}
+
+  else:
+    no_pdf_or_webpage_get_query_text = messages[-1].content
+    print("No pdf or webpage therefore use query reformulated or raw query: ", no_pdf_or_webpage_get_query_text)
+    return {"messages": [{"role": "system", "content": f"text: {no_pdf_or_webpage_get_query_text}"}]}
 
 
 ## 3- EMBED ALL DATABASE SAVED DOC DATA TO VECTORDB
@@ -637,10 +696,12 @@ def store_dataframe_to_db(state: MessagesState) -> Dict[str, Any]:
 def custom_chunk_and_embed_to_vectordb(state: MessagesState) -> Dict[str, Any]:
 
   # vars
-  table_name: str = "test_table"
+  # doc_name_or_url  3 maybe add here document name or url by saving it to dynamic env en loading it here so that we embed only the document concerning user needs
+  table_name: str = os.getenv("TABLE_NAME") # "test_table"
   chunk_size: int = 500
   collection_name: str = COLLECTION_NAME
   connection_string: str = CONNECTION_STRING
+  
   # Embed all documents in the database
   # function from module `lib_helpers.embedding_and_retrieval`
   # here we get List[Dict[str,Any]]
@@ -671,7 +732,7 @@ def custom_chunk_and_embed_to_vectordb(state: MessagesState) -> Dict[str, Any]:
   conn.close()
   # update state
   
-  return {"messages": [{"role": "system", "content": "success: database data fully embedded to vectordb"}]}
+  return {"messages": [{"role": "system", "content": "success: data chunks fully embedded to vectordb"}]}
    
 
 
@@ -740,13 +801,6 @@ def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, sco
 
 # function that check states to know if we perform internet search, should handle all the cases in which internet search can be called
 
-# will be used as `llm_with_internet_search_tool(query)` : tool are  " internet_search_tool, tool_internet, internet_search_query]
-llm_with_internet_search_tool1 = groq_llm_mixtral_7b.bind_tools([tool_internet])
-llm_with_internet_search_tool2 = groq_llm_mixtral_7b.bind_tools([internet_search_tool])
-internet = [tool_internet]
-llm_with_internet_search_tool3 = groq_llm_mixtral_7b.bind_tools(internet)
-# OR `internet_tool_node = ToolNode(internet)`
-
 # search through internet and get 5 search results
 def internet_research_user_query(state: MessagesState):
 
@@ -785,7 +839,7 @@ def internet_research_user_query(state: MessagesState):
     # third way using an agent?????
     # Create an agent executor
     internet = [tool_internet]
-    agent_executor = AgentExecutor.from_agent_and_tools(agent=llm_with_internet_search_tool3, tools=internet)
+    agent_executor = AgentExecutor.from_agent_and_tools(agent=llm_with_internet_search_tool, tools=internet)
     
     tool_executor = ToolExecutor(internet)
     print("TYPE QUERY: ", type(query))
@@ -922,10 +976,9 @@ Here we will create hypothetical desired workflow for the graph
            1.1.1--- If webpage title or pdf title in db --- If/Else conditional edge 'cache/vectordb query answer check'
                                                         1.1.1.1--- If answer in cache/vectordb --- answer user query --- END
                                                         1.1.1.2--- Else Internet Search about subject
-                                                                   --- Save query/internet_answer to DB
-                                                                       --- Embed query/internet_answer
-                                                                           --- answer user query and cache it
-                                                                               --- END
+                                                                   --- Embed query/internet_answer and cache it
+                                                                       --- answer user query with internet_search result
+                                                                           --- END
            --- output = 'webpage/pdf title NOT IN db'
            1.1.2--- Else --- If/Else conditional edge 'webpage or pdf processing':
                          --- output = 'url'
@@ -942,6 +995,10 @@ Here we will create hypothetical desired workflow for the graph
                                                            --- embed chunks
                                                                --- save to state 'pdf embedded'
                                                                    --- go to 1.1.1.1 flow which will search in cache and won't found it and make a vector search and answer-> END
+                         --- output = 'text'
+                         1.1.2.3--- If text    --- perform internet search to get response of `text only` query
+                                                   --- format internet result and answer -> END
+
     2--- Analyze User Query to extract the question from it and rephrase the question to optimize llm information research/retrieval --- save to state 'query/question'
          3--- Retrieve answer from Query in embedded collection
               --- save to state answer_retrieved

@@ -1,6 +1,6 @@
 ## PROMPT TEMPLATES
 
-# Prompt Direct LLM Calls question/answer
+# Prompt Direct question/answer LLM Calls
 test_prompt_siberia = {
   "template": "What is the weather like in {test_var} usually.\nAnswer only with the schema in markdown between ```markdown ```.",
   "input_variables": {"test_var": "Siberia"}
@@ -10,7 +10,7 @@ test_prompt_tokyo = {
   "input_variables": {}
 }
 
-# Prompt System/Human/Ai
+# Prompt Chat System/Human/Ai LLM Calls
 test_prompt_dakar = {
   "system": {
     "template": "You are an expert in climat change and will help by answering questions only about climat change. If any other subject is mentioned, you must answer that you don't know as you are only expert in climat change related questions.\nAnswer only with the schema in markdown between ```markdown ```.", 
@@ -122,5 +122,23 @@ generate_from_empty_prompt = {
 }
 
 
-
+# prompt for node that creates report from retrieved data.
+answer_user_with_report_from_retrieved_data_prompt =   {
+  "system": {
+    "template": """You are an expert in writing markdown reports from information provided to you. YOu format it well and provide, title, paragraphs and bullet points. You also add your advice. Answer only with in markdown between ```markdown ```.""", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": """Here is my data, please make a professional report from those informations using the markdown format.: 
+      - Topic: {question}
+      - Information to be extracted for more context for the topic: {info_data_retrieved} 
+      - Internet extended actual information about topic: {internet_search_result}
+    """, 
+    "input_variables": {}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
      

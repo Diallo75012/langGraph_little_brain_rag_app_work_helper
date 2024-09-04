@@ -33,7 +33,7 @@ def create_chunks_from_db_data(rows: List[Dict[str, Any]], chunk_size: int) -> L
         
         # Check if adding the current row exceeds the chunk size
         if current_size + doc_length > chunk_size and chunk:
-            # Ensure the last row of the current chunk is the first row of the next chunk
+            # Ensure the last row of the current chunk is the first row of the next chunk = Overlap
             next_chunk = [{'UUID': chunk[-1]['UUID'], 'content': chunk[-1]['content']}]
             # append to the full chunk to final list of custom chunks
             chunks.append(chunk)
