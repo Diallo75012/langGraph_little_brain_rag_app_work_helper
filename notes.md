@@ -2266,7 +2266,7 @@ query_human = HumanMessage(content="Tokyo is number 1 city to have more than 20 
 response = groq_llm_mixtral_7b.invoke([query_system, query_human])
 print(f"Third way: {response.content.split('```')[1].strip('markdown').strip()}")
 
-Outputs th ebets structure and follows instruction well with nice markdown formatting and in case of call calculations sees `20 million` as `20` and not `20_000_000`:
+Outputs the best structure but sometimes missing comma in dictionary str and also no calculation made in my second test so not sure. Here the example has worked but later in the day it didn't. and follows instruction well with nice markdown formatting and in case of call calculations sees `20 million` as `20` and not `20_000_000`:
 Third way: {
 bulletpoints: 
 - Tokyo is the most populous city in the world with over 20 million inhabitants.
@@ -2301,36 +2301,39 @@ Fourth way: [{'args': {'calculation': 'Adding 10 to the population of Tokyo (20 
 
 - **Fifth way**
 ```python
+# for CreateBulletPoints
 response_schemas = [
     ResponseSchema(name="bulletpoints", description="Answer creating three bullet points that are very pertinent."),
     ResponseSchema(name="typeofquery", description="tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'."),
 ]
-output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
-format_instructions = output_parser.get_format_instructions()
+# for AddCount
+response_schemas2 = [
+    ResponseSchema(name="initialnumber", description="Initial numbers present in the prompt.")
+    ResponseSchema(name="calculation", description="Details of the calculation that have create the 'result' number.")
+    ResponseSchema(name="result", description="Get the sum of the all the numbers. Then add 10 to the sum which will be final result.")
+    ResponseSchema(name="error", description="An error message when no number has been found in the prompt.")
+]
+parser = StructuredOutputParser.from_response_schemas(response_schemas)
+format_instructions = parser.get_format_instructions()
 prompt = PromptTemplate(
     template="answer the user query.\n{format_instructions}\n{query}",
     input_variables=["query"],
     partial_variables={"format_instructions": format_instructions},
 )
-chain = prompt | model | output_parser
+model = groq_llm_mixtral_7b
+chain = prompt | model | parser
 response = chain.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
 print(f"Fith way: {response}")
-#print("Fith Way with parser: ", output_parser.invoke(response))
+
+Outputs good structure like `First way` but in a Dictionary so even better for value extraction
+Fith way: {'bulletpoints': '• Tokyo is the city with the largest population of over 20 million people.\n• The query asks for a description or information about a tool, but it seems there is a misunderstanding as the topic is about a city.\n• The response should provide relevant and factual information about Tokyo, such as its landmarks, culture, or economy.', 'typeofquery': 'sentence'}
+
 ```
 
 - **Feedback on output parsers**
-Best is the **First way** and the **Third way**.
-I will be using probably the **Third way** as it is more consistent and the output is a str and we can use a function that we already have to transform it into a dict and fetch what we need.
-The Fifth way didn't work always an error:
-```python
-...
-    raise JSONDecodeError("Expecting value", s, err.value) from None
-json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
-...
-    raise OutputParserException(f"Got invalid JSON object. Error: {e}")
-langchain_core.exceptions.OutputParserException: Got invalid JSON object. Error: Expecting value: line 1 column 1 (char 0)
-```
-
+Best is the **First way** for all and the **Fifth way** for text only but not for calculation. **Third way** maybe with better optimal prompting.
+- For text: I will be using probably the **Fifth way** as it is more consistent and the output is a `dict` and we can use a function that we already have to transform it into a dict if it is not as th estructure is perfect and fetch what we need.
+- For calculation or more complexity: I will be using probably the **First way** as it has not failed any kind of jobs so may even use it for everything and keep the **Fifth way** as backup alternative but knowing its limitations.
 
 
 # Next
