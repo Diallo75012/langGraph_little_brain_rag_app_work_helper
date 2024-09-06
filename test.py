@@ -18,7 +18,7 @@ from langchain.tools import StructuredTool
 import pandas as pd
 import psycopg2
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 
 import json
 import ast
@@ -156,6 +156,105 @@ class InternetSearchStructuredOutput2(TypedDict):
     internet_search_answer: Annotated[str, ..., "The result of the internet research in markdon format about user query when an answer has been found."]
     source: Annotated[str, ..., "The source were the answer has been fetched from in markdown format, it can be a document name, or an url"]
     error: Annotated[str, ..., "An error messages when the search engine didn't return any response or no valid answer."]
+
+from langchain.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from langchain_core.utils.function_calling import convert_to_openai_function
+from langchain.output_parsers.openai_tools import JsonOutputToolsParser
+from langchain.output_parsers.openai_functions import PydanticOutputFunctionsParser
+from langchain.output_parsers import ResponseSchema, StructuredOutputParser
+
+
+
+
+# Define your desired data structure.
+class AddCount(BaseModel):
+    """Will always add 10 to any number"""
+    initialnumber: List[int] = Field(default= [], description="Initial numbers present in the prompt.")
+    calculation: str = Field(default="", description="Details of the calculation that have create the 'result' number.")
+    result: int = Field(default= 0, description="Get the sum of the all the numbers. Then add 10 to the sum which will be final result. ")
+    error: str = Field(default= "", description="An error message when no number has been found in the prompt.")
+
+class CreateBulletPoints(BaseModel):
+    """Creates answers in the form of 3 bullet points."""
+    bulletpoints: str = Field(default="", description="Answer creating three bullet points that are very pertinent.")
+    typeofquery: str = Field(default="", description="tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.")
+
+
+
+# Set up a parser + inject instructions into the prompt template.
+parser = PydanticOutputParser(pydantic_object=AddCount)
+
+prompt = PromptTemplate(
+    template="Answer the user query.\n{format_instructions}\n{query}\n",
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+)
+
+# And a query intended to prompt a language model to populate the data structure.
+prompt_and_model = prompt | groq_llm_mixtral_7b
+output = prompt_and_model.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
+response = parser.invoke(output)
+print("First way: ", response)
+
+parser = PydanticOutputFunctionsParser(pydantic_schema=AddCount)
+
+openai_functions = [convert_to_openai_function(AddCount)]
+chain = prompt | groq_llm_mixtral_7b.bind(functions=openai_functions) | parser
+
+print("Second way: ", chain.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."}))
+
+
+# for AddCount
+query_system = SystemMessage(content="Help user by answering always with 'initialnumber' (Initial numbers present in the prompt.), 'calculation' (Details of the calculation that have create the 'result' number), 'result' (Get the sum of the all the numbers. Then add 10 to the sum which will be final result) and 'error' {An error message when no number has been found in the prompt.), put it in a dictionary between mardown tags like ```markdown{initialnumber: list of Initial numbers present in the prompt. ,calculation: Details of the calculation that have create the 'result' number, result: Get the sum of the all the numbers. Then add 10 to the sum which will be final result, error: An error message when no number has been found in the prompt.}```.")
+# for CreateBulletPoints
+#query_system = SystemMessage(content="Help user by answering always with 'bulletpoints' (Answer creating three bullet points that are very pertinent.), 'typeofquery' (tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.), put it in a dictionary between mardown tags like ```markdown{bulletpoints: Answer creating three bullet points that are very pertinent, typeofquery: tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.}```.")
+query_human = HumanMessage(content="Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please.")
+
+# Invoke the model and get the structured output
+response = groq_llm_mixtral_7b.invoke([query_system, query_human])
+print(f"Third way: {response.content.split('```')[1].strip('markdown').strip()}")
+
+
+model = groq_llm_mixtral_7b.bind_tools([AddCount])
+prompt = ChatPromptTemplate.from_messages(
+    [("system", "You are helpful assistant"), ("user", "{input}")]
+)
+parser = JsonOutputToolsParser()
+chain = prompt | model | parser
+response = chain.invoke({"input": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
+print(f"Fourth way: {response}")
+
+
+response_schemas = [
+    ResponseSchema(name="bulletpoints", description="Answer creating three bullet points that are very pertinent."),
+    ResponseSchema(name="typeofquery", description="tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'."),
+]
+output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
+format_instructions = output_parser.get_format_instructions()
+prompt = PromptTemplate(
+    template="answer the user query.\n{format_instructions}\n{query}",
+    input_variables=["query"],
+    partial_variables={"format_instructions": format_instructions},
+)
+chain = prompt | model | output_parser
+response = chain.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
+print(f"Fith way: {response}")
+#print("Fith Way with parser: ", output_parser.invoke(response))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # TOOLS
 internet_search_tool = DuckDuckGoSearchRun()

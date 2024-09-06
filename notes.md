@@ -2128,7 +2128,7 @@ Outputs:
 Structured Output: internet_search_answer='' source='' error=''
 ```
 
-## Structured Output Using Only Prompting Which Has Worked Fine
+# Structured Output Using Only Prompting Which Has Worked Fine
 Trying without the structured_output s***, just prompting as I did before and it worked fine without the complexity of using something that is documented in 1000 different ways and not one working, even chatgpt is tired!
 ```python
 # Initialize the Groq model and set it to return structured output
@@ -2199,6 +2199,139 @@ tool_search_node = ToolNode([structured_output_report])
 # tool_choice="any" only supported for the moment for MistraiAI, Openai, Groq, FireworksAI. for grow should ane `None` or `auto`
 llm_with_structured_output_report_tool = groq_llm_mixtral_7b.bind_tools([structured_output_report])
 ```
+
+# Structure Outputs all different ways and feedback
+- Define your desired data structure.
+```python
+class AddCount(BaseModel):
+    """Will always add 10 to any number"""
+    initialnumber: List[int] = Field(default= [], description="Initial numbers present in the prompt.")
+    calculation: str = Field(default="", description="Details of the calculation that have create the 'result' number.")
+    result: int = Field(default= 0, description="Get the sum of the all the numbers. Then add 10 to the sum which will be final result. ")
+    error: str = Field(default= "", description="An error message when no number has been found in the prompt.")
+
+class CreateBulletPoints(BaseModel):
+    """Creates answers in the form of 3 bullet points."""
+    bulletpoints: str = Field(default="", description="Answer creating three bullet points that are very pertinent.")
+    typeofquery: str = Field(default="", description="tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.")
+```
+
+- **First way**
+```python
+# Set up a parser + inject instructions into the prompt template.
+parser = PydanticOutputParser(pydantic_object=CreateBulletPoints)
+
+prompt = PromptTemplate(
+    template="Answer the user query.\n{format_instructions}\n{query}\n",
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+)
+
+# And a query intended to prompt a language model to populate the data structure.
+prompt_and_model = prompt | groq_llm_mixtral_7b
+output = prompt_and_model.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
+response = parser.invoke(output)
+print("First way: ", response)
+
+Outputs condensed bullet points but has respected the schema and in case and in case of calculaiton does it right:
+First way:  bulletpoints='• Tokyo has the largest population of any city, with over 20 million inhabitants.\n• It is a major international financial and cultural center.\n• Tokyo is known for its efficient public transportation system and high standard of living.' typeofquery='sentence'
+First way:  initialnumber=[1, 20000000] calculation='Summed the initial number and added 10' result=2000010 error=''
+
+```
+
+- **Second way**
+```python
+parser = PydanticOutputFunctionsParser(pydantic_schema=CreateBulletPoints)
+
+openai_functions = [convert_to_openai_function(CreateBulletPoints)]
+chain = prompt | groq_llm_mixtral_7b.bind(functions=openai_functions) | parser
+
+print("Second way: ", chain.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."}))
+
+Outputs no bullet points and does not the calculation at all, miss interprets:
+Second way:  bulletpoints='Tokyo is the largest city in Japan and one of the 14 cities in the world with a population of more than 20 million people. It is a major international financial and cultural center. Tokyo has a population of over 37 million people, making it the most populous metropolitan area in the world.' typeofquery='sentence'
+Second way:  initialnumber=[20000000, 1] calculation='Added initialnumber values to get sum' result=0 error=''
+
+```
+
+- **Third way**
+```python
+# for AddCount
+#query_system = SystemMessage(content="Help user by answering always with 'initialnumber' (Initial numbers present in the prompt.), 'calculation' (Details of the calculation that have create the 'result' number), 'result' (Get the sum of the all the numbers. Then add 10 to the sum which will be final result) and 'error' {An error message when no number has been found in the prompt.), put it in a dictionary between mardown tags like ```markdown{initialnumber: list of Initial numbers present in the prompt. ,calculation: Details of the calculation that have create the 'result' number, result: Get the sum of the all the numbers. Then add 10 to the sum which will be final result, error: An error message when no number has been found in the prompt.}```.")
+# for CreateBulletPoints
+query_system = SystemMessage(content="Help user by answering always with 'bulletpoints' (Answer creating three bullet points that are very pertinent.), 'typeofquery' (tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.), put it in a dictionary between mardown tags like ```markdown{bulletpoints: Answer creating three bullet points that are very pertinent, typeofquery: tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.}```.")
+query_human = HumanMessage(content="Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please.")
+
+# Invoke the model and get the structured output
+response = groq_llm_mixtral_7b.invoke([query_system, query_human])
+print(f"Third way: {response.content.split('```')[1].strip('markdown').strip()}")
+
+Outputs th ebets structure and follows instruction well with nice markdown formatting and in case of call calculations sees `20 million` as `20` and not `20_000_000`:
+Third way: {
+bulletpoints: 
+- Tokyo is the most populous city in the world with over 20 million inhabitants.
+- It is the capital of Japan and is known for its bustling streets, rich culture, and technological advancements.
+- Tokyo is a popular tourist destination, attracting millions of visitors each year with its many attractions, including the Tokyo Tower, the Tokyo Skytree, and the historic Asakusa district.
+typeofquery: sentence
+}
+Third way: {
+initialnumber: [20, 1], 
+calculation: The sum of the two initial numbers is 21. Then add 10 to the sum which gives a final result of 31.
+result: 31, 
+error: There are initial numbers present in the prompt, so no error message is needed.
+}
+```
+
+- **Fourth way**
+```python
+model = groq_llm_mixtral_7b.bind_tools([CreateBulletPoints])
+prompt = ChatPromptTemplate.from_messages(
+    [("system", "You are helpful assistant"), ("user", "{input}")]
+)
+parser = JsonOutputToolsParser()
+chain = prompt | model | parser
+response = chain.invoke({"input": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
+print(f"Fourth way: {response}")
+
+Outputs no bullet points and in case of calculation doesn't do it right:
+Fourth way: [{'args': {'bulletpoints': 'Tokyo is the number 1 city with more than 20 million inhabitants, it is known for its rich culture and history, and it has a vibrant economy.', 'typeofquery': 'statement'}, 'type': 'CreateBulletPoints'}]
+Fourth way: [{'args': {'calculation': 'Adding 10 to the population of Tokyo (20 million) to find the new total.', 'initialnumber': [20000000], 'result': 0}, 'type': 'AddCount'}]
+
+```
+
+- **Fifth way**
+```python
+response_schemas = [
+    ResponseSchema(name="bulletpoints", description="Answer creating three bullet points that are very pertinent."),
+    ResponseSchema(name="typeofquery", description="tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'."),
+]
+output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
+format_instructions = output_parser.get_format_instructions()
+prompt = PromptTemplate(
+    template="answer the user query.\n{format_instructions}\n{query}",
+    input_variables=["query"],
+    partial_variables={"format_instructions": format_instructions},
+)
+chain = prompt | model | output_parser
+response = chain.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
+print(f"Fith way: {response}")
+#print("Fith Way with parser: ", output_parser.invoke(response))
+```
+
+- **Feedback on output parsers**
+Best is the **First way** and the **Third way**.
+I will be using probably the **Third way** as it is more consistent and the output is a str and we can use a function that we already have to transform it into a dict and fetch what we need.
+The Fifth way didn't work always an error:
+```python
+...
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+...
+    raise OutputParserException(f"Got invalid JSON object. Error: {e}")
+langchain_core.exceptions.OutputParserException: Got invalid JSON object. Error: Expecting value: line 1 column 1 (char 0)
+```
+
+
 
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
