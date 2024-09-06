@@ -123,7 +123,7 @@ generate_from_empty_prompt = {
 
 
 # prompt for node that creates report from retrieved data.
-answer_user_with_report_from_retrieved_data_prompt =   {
+answer_user_with_report_from_retrieved_data_prompt = {
   "system": {
     "template": """You are an expert in writing markdown reports from information provided to you. YOu format it well and provide, title, paragraphs and bullet points. You also add your advice. Answer only with in markdown between ```markdown ```.""", 
     "input_variables": {}
@@ -141,4 +141,26 @@ answer_user_with_report_from_retrieved_data_prompt =   {
     "input_variables": {}
   },
 }
-     
+
+
+# prompt for structured output OR here have a list of prompts for each structured output or use this empty one and fill it with messages and requirements in the node/tool function
+structured_outpout_report_prompt = {
+  "system": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+
+
+
+
+
+

@@ -29,7 +29,8 @@ from prompts.prompts import (
   detect_content_type_prompt,
   summarize_text_prompt,
   generate_title_prompt,
-  answer_user_with_report_from_retrieved_data_prompt  
+  answer_user_with_report_from_retrieved_data_prompt,
+  structured_outpout_report_prompt
 )
 from lib_helpers.chunking_module import create_chunks_from_db_data
 from lib_helpers.query_analyzer_module import detect_content_type
@@ -172,37 +173,6 @@ def search(query: str, state: MessagesState = MessagesState()):
     return search_results
 
 tool_search_node = ToolNode([search])
-
-# tool_choice="any" only supported for the moment for MistraiAI, Openai, Groq, FireworksAI. for grow should ane `None` or `auto`
-llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([search])# .with_structured_output(InternetSearchStructuredOutput)
-
-
-
-# Initialize the Groq model and set it to return structured output
-model = groq_llm_mixtral_7b
-
-# Create a query asking for structured output directly
-query_system = SystemMessage(content="Help user by answering always with 'Advice' (your advice about the subject of the question and how user should tackle it), 'Answer' (The answer in French to the user query) , and 'error' (The status when you can't answer), put it in a dictionary between mardown tags like ```markdown{Advice: your advice ,Answer: the answer to the user query in French,error:if you can't answer}```.")
-query_human = HumanMessage(content="What is the story behind th epythagorus theorem, it seems like they have lied and it has been stollen knowledge from the Egyption where pythagore have studied with black people and came back to greece and said that it is from his own knwoledge, today french people are teaching that it is greek when it was black egyptian knowledge. this to keep the white supremacy idea which is a bad ideology")
-
-# Invoke the model and get the structured output
-try:
-    response = model.invoke([query_system, query_human])
-    print("Structured Output:", response)
-except Exception as e:
-    print(f"An error occurred: {e}")
-
-'''
-from langchain_core.output_parsers.retry import RetryOutputParser
- Setup retry parser to ensure correct output structure
-retry_parser = RetryOutputParser.from_llm(
-    parser=PydanticOutputParser(pydantic_object=InternetSearchStructuredOutput),
-    llm=groq_llm_mixtral_7b,
-    max_retries=3
-)
-response = retry_parser.invoke("Search for the latest restaurant opened in Azabu Juuban")
-print(response)
-'''
 
 def internet_search_agent(state: MessagesState):
     messages = state['messages']

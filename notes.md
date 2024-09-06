@@ -2033,7 +2033,7 @@ Here we will create hypothetical desired workflow for the graph
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
 - incorporate the internet tool in the graph - OK
-- graph accepts x3 states but we will only use here `MessagesStates` already present in LangGraph library. We could create other states using `NewState(TypeDict)` but we will keep it simple in this project
+- graph accepts x3 states but we will only use here `MessagesStates` already present in LangGraph library. We could create other states using `NewState(TypeDict)` but we will keep it simple in this project - MAYBE BUT NOT NOW
 - delete `parquet` files (`df_final` compacted) after they have been processed and saved to db to save space and not have file building up and taking space - OK
 - reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
 - fix redis that doesn't save anything as value for key. find in the code where is the issue
@@ -2128,6 +2128,7 @@ Outputs:
 Structured Output: internet_search_answer='' source='' error=''
 ```
 
+## Structured Output Using Only Prompting Which Has Worked Fine
 Trying without the structured_output s***, just prompting as I did before and it worked fine without the complexity of using something that is documented in 1000 different ways and not one working, even chatgpt is tired!
 ```python
 # Initialize the Groq model and set it to return structured output
@@ -2150,10 +2151,59 @@ Outputs:
 ```python
 Structured Output: content="```markdown{\nAdvice: It's important to approach history with an open mind and a critical eye. While it's true that Pythagoras studied in Egypt, there is no concrete evidence to support the claim that he stole the theorem from Egyptian or black mathematicians. The development of mathematical knowledge is often a collaborative process, with ideas and concepts building upon each other over time. It's crucial to give credit where it's due, but it's also important to avoid oversimplifying or distorting historical narratives to fit a particular ideology.\nAnswer: Le théorème de Pythagore est un théorème de géométrie dans un triangle rectangle, qui affirme que le carré de la longueur de l'hypoténuse (le côté opposé à l'angle droit) est égal à la somme des carrés des longueurs des deux autres côtés. Ce théorème est souvent attribué à Pythagore, un mathématicien grec du VIe siècle avant J.-C., mais il est possible que des versions de ce théorème aient été connues et utilisées par d'autres cultures avant lui.\nError: There is no error in your question, but it's important to note that the development of mathematical knowledge is a complex and nuanced process, and attributing specific discoveries to particular individuals or cultures can be challenging and sometimes contentious.\n}```" response_metadata={'token_usage': {'completion_tokens': 319, 'prompt_tokens': 202, 'total_tokens': 521, 'completion_time': 0.520485911, 'prompt_time': 0.011388187, 'queue_time': 0.003033524000000001, 'total_time': 0.531874098}, 'model_name': 'mixtral-8x7b-32768', 'system_fingerprint': 'fp_c5f20b5bb1', 'finish_reason': 'stop', 'logprobs': None} id='run-19184a14-1ff9-404c-9721-687fd9f81320-0' usage_metadata={'input_tokens': 202, 'output_tokens': 319, 'total_tokens': 521}
 ```
+- adapted and transformed as funciton which can be used as `node` function or as a `@tool`, need to create the prompts
+```python
+def structured_output_report(state: MessagesState):
+  query_system = SystemMessage(content="Help user by answering always with 'Advice' (your advice about the subject of the question and how user should tackle it), 'Answer' (The answer in French to the user query) , and 'error' (The status when you can't answer), put it in a dictionary between mardown tags like ```markdown{Advice: your advice ,Answer: the answer to the user query in French,error:if you can't answer}```.")
+  query_human = HumanMessage(content="What is the story behind th epythagorus theorem, it seems like they have lied and it has been stollen knowledge from the Egyption where pythagore have studied with black people and came back to greece and said that it is from his own knwoledge, today french people are teaching that it is greek when it was black egyptian knowledge. this to keep the white supremacy idea which is a bad ideology")
 
+  # Invoke the model and get the structured output
+  try:
+    response = groq_llm_llama3_8b.invoke([query_system, query_human])
+    print(f"structured_output:{response}")
+  except Exception as e:
+    return f"An error occurred: {e}"
 
+  return {"messages": [response]}
+```
 
+```python
+@tool
+def structured_output_report(prompt: str = structured_outpout_report_prompt, state: MessagesState):
+  """
+  This function will structure the output in order to have the format of answer required for quality deliverability
+  
+  Parameters:
+  prompt str: the system prompt that will instruct in how the output of the answer should be structured
+  
+  Returns:
+  messages dict: a dictionary that will update the state with the reponse from the llm having structure the message
+  """
+  messages = state["messages"]
+  last_message = messages[-1].content
 
+  query_system = prompt
+  query_human = HumanMessage(content=last_message))
+
+  # Invoke the model and get the structured output
+  try:
+    response = groq_llm_llama3_8b.invoke([query_system, query_human])
+    print(f"structured_output:{response}")
+  except Exception as e:
+    return f"An error occurred: {e}"
+
+  return {"messages": [response]}
+
+tool_search_node = ToolNode([structured_output_report])
+
+# tool_choice="any" only supported for the moment for MistraiAI, Openai, Groq, FireworksAI. for grow should ane `None` or `auto`
+llm_with_structured_output_report_tool = groq_llm_mixtral_7b.bind_tools([structured_output_report])
+```
+
+# Next
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
+- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+- fix redis that doesn't save anything as value for key. find in the code where is the issue
 
 
 
