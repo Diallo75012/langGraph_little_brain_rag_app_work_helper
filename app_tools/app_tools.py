@@ -59,7 +59,7 @@ tool_internet = Tool(
 # will be used as `llm_with_internet_search_tool(query)`
 llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([internet_search_tool, tool_internet, internet_search_query])
 
-
+'''
 # TOOLS
 internet_search_tool = DuckDuckGoSearchRun()
 tool_internet = Tool(
@@ -67,7 +67,7 @@ tool_internet = Tool(
     description="Search DuckDuckGO for recent results.",
     func=internet_search_tool.run,
 )
-'''
+
 
 @tool
 def search(query: str, state: MessagesState = MessagesState()):

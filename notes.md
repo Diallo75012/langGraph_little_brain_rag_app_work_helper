@@ -2201,6 +2201,16 @@ llm_with_structured_output_report_tool = groq_llm_mixtral_7b.bind_tools([structu
 ```
 
 # Structure Outputs all different ways and feedback
+- Some of the important import needed:
+```python
+from langchain.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from langchain_core.utils.function_calling import convert_to_openai_function
+from langchain.output_parsers.openai_tools import JsonOutputToolsParser
+from langchain.output_parsers.openai_functions import PydanticOutputFunctionsParser
+from langchain.output_parsers import ResponseSchema, StructuredOutputParser
+```
 - Define your desired data structure.
 ```python
 class AddCount(BaseModel):
@@ -2228,9 +2238,8 @@ prompt = PromptTemplate(
 )
 
 # And a query intended to prompt a language model to populate the data structure.
-prompt_and_model = prompt | groq_llm_mixtral_7b
-output = prompt_and_model.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
-response = parser.invoke(output)
+prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+response = prompt_and_model.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
 print("First way: ", response)
 
 Outputs condensed bullet points but has respected the schema and in case and in case of calculaiton does it right:
@@ -2339,8 +2348,9 @@ Best is the **First way** for all and the **Fifth way** for text only but not fo
 # Next
 - keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
 - reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
-- fix redis that doesn't save anything as value for key. find in the code where is the issue
-
+- fix redis that doesn't save anything as value for key. find in the code where is the issue - OK for the moment works fine
+- adapt all functions to the new graph as those are exported to their to make the graph run, but not yet fixed.
+- tranfer all `test.py` function/graph/etc/... to get our initial graph to `app.py` 
 
 
 

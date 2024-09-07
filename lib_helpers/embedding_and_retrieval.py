@@ -107,7 +107,7 @@ def update_retrieved_status(table_name: str, doc_id: str):
     conn = connect_db()
     cursor = conn.cursor()
     # `doc_id` is a `uuid.UUID` and has to be passed as `str` for database sql query
-    cursor.execute(sql.SQL("UPDATE {} SET retrieved = 'TRUE' WHERE id = '{}';").format(sql.Identifier(table_name), sql.Literal(doc_id)))
+    cursor.execute(sql.SQL("UPDATE {} SET retrieved = 'TRUE' WHERE id = %s;").format(sql.Identifier(table_name)), [str(doc_id)])
     conn.commit()
     cursor.close()
     conn.close()
@@ -210,7 +210,7 @@ def fetch_document_by_uuid(table_name: str, doc_id: str) -> Dict[str, Any]:
     cursor = conn.cursor()
     print("Doc id: ", doc_id, " , Type: ", type(doc_id))
     # doc_id is a uuid.UUID we need to pass in the query the `str` version of it
-    cursor.execute(sql.SQL("SELECT * FROM {} WHERE id = '{}';").format(sql.Identifier(table_name), sql.Literal(doc_id)))
+    cursor.execute(sql.SQL("SELECT * FROM {} WHERE id = %s;").format(sql.Identifier(table_name)), [str(doc_id)])
     row = cursor.fetchone()
     print("ROW Found in DB: ", row)
     cursor.close()

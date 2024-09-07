@@ -302,11 +302,11 @@ def get_user_input(state: MessagesState):
   
   return {"messages": [user_input]}
 
-# will create the  schema for the internet search tool using last_message from states or just answer directly if not tool not needed
+# answer user different functions
 def final_answer_user(state: MessagesState):
   messages = state['messages']
   #print("Message state: ", messages)
-  last_message = messages[-1].content
+  last_message = {"first_graph_message": messages[0].content, "second_graph_message": messages[1].content, "last_graph_message": messages[-1].content}
   return {"messages": [{"role": "ai", "content": last_message}]}
 
 def answer_user_with_report(state: MessagesState):
@@ -413,7 +413,8 @@ def dataframe_from_query_conditional_edge_decision(state: MessagesState):
   if path_or_text == "text":
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- returned: 'text'\n\n")
-    return "internet_search_agent"
+    #return "internet_search_agent"
+    return "answer_user"
   
   else:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
@@ -443,8 +444,8 @@ def store_dataframe_to_db_conditional_edge_decision(state: MessagesState):
   elif "success" in last_message:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- success: {last_message}\n\n")
-    #return "chunk_and_embed_from_db_data"
-    return "answer_user"
+    return "chunk_and_embed_from_db_data"
+    #return "answer_user"
 
   elif "text" in last_message:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
@@ -498,23 +499,27 @@ def handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decisio
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- success_hash: {last_message}\n\n")
     #return "chunk_and_embed_from_db_data"
-    return "internet_search_agent"
+    #return "internet_search_agent"
+    return "answer_user"
 
   elif "success_semantic" in last_message:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- success_semantic: {last_message}\n\n\n\n")
-    return "internet_search_agent"
+    #return "internet_search_agent"
+    return "answer_user"
 
   elif "success_vector_retrieved_and_cached" in last_message:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- success_vector_retrieved_and_cached: {last_message}\n\n")
-    return "internet_search_agent"
+    #return "internet_search_agent"
+    return "answer_user"
 
   elif "nothing_in_cache_nor_vectordb" in last_message:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- nothing_in_cache_nor_vectordb: {last_message}\n\n\n\n")
     # will process user query and start the dataframe creation flow and embedding storage of that df
     return "dataframe_from_query"
+    #return
 
   else:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
@@ -567,7 +572,7 @@ workflow.add_node("get_user_input", get_user_input)
 workflow.add_node("handle_query_by_calling_cache_then_vectordb_if_fail", handle_query_by_calling_cache_then_vectordb_if_fail)
 workflow.add_node("dataframe_from_query", process_query)
 workflow.add_node("store_dataframe_to_db", store_dataframe_to_db)
-#workflow.add_node("chunk_and_embed_from_db_data", custom_chunk_and_embed_to_vectordb)
+workflow.add_node("chunk_and_embed_from_db_data", custom_chunk_and_embed_to_vectordb)
 workflow.add_node("internet_search_agent", internet_search_agent) # -2 user input, -1 data retrieved
 workflow.add_node("tool_search_node", tool_search_node) # -3 user input, -2 data retrieved, -1 schema internet tool
 # special andwser report fetching user query, database retrieved data and internet search result
@@ -578,54 +583,59 @@ workflow.add_node("answer_user", final_answer_user)
 
 workflow.set_entry_point("get_user_input")
 workflow.add_edge("get_user_input", "handle_query_by_calling_cache_then_vectordb_if_fail")
+
+# `handle_query_by_calling_cache_then_vectordb_if_fail` edge
 workflow.add_conditional_edges(
     "handle_query_by_calling_cache_then_vectordb_if_fail",
     handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decision, 
     #"dataframe_from_query"
 )
+
 # `dataframe_from_query` conditional edge
 workflow.add_conditional_edges(
     "dataframe_from_query",
     dataframe_from_query_conditional_edge_decision,
 )
-#workflow.add_edge("dataframe_from_query", "store_dataframe_to_db")
-#workflow.add_edge("dataframe_from_query", "answer_user")
-#workflow.add_edge("dataframe_from_query", "error_handler")
+
+workflow.add_edge("dataframe_from_query", "store_dataframe_to_db")
+workflow.add_edge("dataframe_from_query", "answer_user")
+workflow.add_edge("dataframe_from_query", "error_handler")
 
 # `store_dataframe_to_db` conditional edge
 workflow.add_conditional_edges(
     "store_dataframe_to_db",
     store_dataframe_to_db_conditional_edge_decision,
 )
-#workflow.add_edge("store_dataframe_to_db", "chunk_and_embed_from_db_data")
-#workflow.add_edge("store_dataframe_to_db", "answer_user")
-#workflow.add_edge("store_dataframe_to_db", "error_handler")
+
+workflow.add_edge("store_dataframe_to_db", "chunk_and_embed_from_db_data")
+workflow.add_edge("store_dataframe_to_db", "answer_user")
+workflow.add_edge("store_dataframe_to_db", "error_handler")
 
 # `chunk_and_embed_from_db_data` conditional edge
-#workflow.add_conditional_edges(
-#    "chunk_and_embed_from_db_data",
-#    chunk_and_embed_from_db_data_conditional_edge_decision,
-#)
-#workflow.add_edge("chunk_and_embed_from_db_data", "answer_user")
+workflow.add_conditional_edges(
+    "chunk_and_embed_from_db_data",
+    chunk_and_embed_from_db_data_conditional_edge_decision,
+)
+workflow.add_edge("chunk_and_embed_from_db_data", "answer_user")
+workflow.add_edge("dataframe_from_query", "store_dataframe_to_db")
 
-
-#workflow.add_edge("dataframe_from_query", "store_dataframe_to_db")
-#workflow.add_edge("store_dataframe_to_db", "chunk_and_embed_from_db_data")
+# No NEED AS `handle_query_by_calling_cache_then_vectordb_if_fail` NODE MANAGES RETRIEVAL
 #workflow.add_edge("chunk_and_embed_from_db_data", "retrieve_data_from_query")
 #workflow.add_edge("retrieve_data_from_query", "answer_user")
 
 
-#workflow.add_edge("internet_search", "answer_user")
-workflow.add_edge("internet_search_agent", "tool_search_node")
-workflow.add_edge("tool_search_node", "answer_user_with_report")
+# TOOLS EDGES
+#workflow.add_edge("internet_search_agent", "answer_user")
+#workflow.add_edge("internet_search_agent", "tool_search_node")
+#workflow.add_edge("tool_search_node", "answer_user_with_report")
+
 workflow.add_edge("error_handler", "answer_user")
 workflow.add_edge("answer_user", END)
-workflow.add_edge("answer_user_with_report", END)
+#workflow.add_edge("answer_user_with_report", END)
 
-'''
+
 checkpointer = MemorySaver()
 app = workflow.compile(checkpointer=checkpointer)
-'''
 
 
 '''
@@ -670,7 +680,7 @@ def beautify_output(data):
 
 # using STREAM
 # we can maybe get the uder input first and then inject it as first message of the state: `{"messages": [HumanMessage(content=user_input)]}`
-'''
+
 count = 0
 for step in app.stream(
     {"messages": [SystemMessage(content="Graph Embedding Webpage or PDF")]},
@@ -685,81 +695,13 @@ for step in app.stream(
 graph_image = app.get_graph().draw_png()
 with open("graph.png", "wb") as f:
     f.write(graph_image)
-'''
 
 
 '''
-internet_search_tool = DuckDuckGoSearchRun()
-tool_internet = Tool(
-    name="duckduckgo_search",
-    description="Search DuckDuckGO for recent results.",
-    func=internet_search_tool.run,
-)
-
-tool_node = ToolNode([tool_internet])
-
-class InternetSearchStructuredOutput(BaseModel):
-    """Internet research Output Response"""
-    internet_search_answer: str = Field(description="The result of the internet research about user query")
-
-structured_internet_research_llm_tool = llm_with_internet_search_tool.with_structured_output(InternetSearchStructuredOutput, include_raw=True)
-
-class InternetSearch(BaseModel):
-  query: str = Field(description="user query to be searched through the internet")
-  state: MessagesState = Field(description="the state storing all messages.")
-
-def internet_search(query: str = "latest restaurant opened in Azabu Juuban?", state: MessagesState = MessagesState()) -> str:
-  """
-    This tool will search in the internet about the answer to the user query
-    
-    Parameter: 
-    query str : 'User query to be searched through the internet'
-    
-    Returns: 
-    str message about report output quality status: 'ok' for good reports and another message different from 'ok' for report that needs to be redone.
-  """
-  response = internet_search_tool.run(query)
-  return {"messages": [response]}
-
-internet_research_tool = StructuredTool.from_function(
-  func=internet_search,
-  name="internet research tool",
-  description=  """
-    This tool will search in the internet about the answer to the user query
-  """,
-  args_schema=InternetSearch,
-  # return_direct=True, # returns tool output only if no TollException raised
-  # coroutine= ... <- you can specify an async method if desired as well
-  # callback==callback_function # will run after task is completed
-)
-
-def internet_research_user_query(state: MessagesState):
-    query = state["messages"][-1].content  # Extract the last user query
-
-    # Create the prompt for the LLM
-    system_message = SystemMessage(content="You are an expert search engine and use the tool available to answer to user query.")
-    human_message = HumanMessage(content=f"Find the most relevant information about: {query}")
-
-    # Use the tool with the constructed prompt
-    agent_executor = AgentExecutor.from_agent_and_tools(agent=llm_with_internet_search_tool, tools=[tool_internet])
-
-    try:
-        # Pass the list of BaseMessages directly
-        result_agent = agent_executor.invoke(human_message)
-        print("Result Agent:", result_agent)
-        return {"messages": [{"role": "assistant", "content": result_agent}]}
-    except Exception as e:
-        print("Error during invocation:", e)
-        return {"messages": [{"role": "assistant", "content": "An error occurred during the internet search."}]}
-'''
+# DEMO TOOL USE BY AGENT USING `AGENT NODE` AND `TOOLNODE`
 
 
 
-
-
-
-
-'''
 @tool
 def get_proverb(query: str, state: MessagesState = MessagesState()):
   """Will transform user query into a funny proverb"""
@@ -898,85 +840,6 @@ with open("agent_tool_call_visualization.png", "wb") as f:
 
 
 
-'''
-{
-  'messages': [
-    HumanMessage(content='what is the weather in sf', id='bd9c0deb-9d88-425e-adf8-62b016e68444'), 
-    AIMessage(content='',
-      additional_kwargs={
-        'tool_calls': [
-          {
-            'id': 'call_q6av', 
-            'function': {
-              'arguments': '{"query":"current weather in San Francisco"}', 'name': 'search'
-            }, 
-            'type': 'function'
-          }
-        ]
-      },
-      response_metadata={
-        'token_usage': {
-          'completion_tokens': 46, # output
-          'prompt_tokens': 903, # input
-          'total_tokens': 949,
-          'completion_time': 0.143823147,
-          'prompt_time': 0.058552886,
-          'queue_time': 0.0043955680000000025,
-          'total_time': 0.202376033
-        },
-        'model_name': 'llama3-70b-8192',
-        'system_fingerprint': 'fp_753a4aecf6',
-        'finish_reason': 'tool_calls',
-        'logprobs': None
-      },
-      id='run-82ff5790-33d4-4d0a-9e62-0bf4ddc34e7a-0',
-      tool_calls=[
-        {'name': 'search',
-        'args': {
-          'query': 'current weather in San Francisco'
-        },
-        'id': 'call_q6av', 'type': 'tool_call'
-        }
-      ],
-      usage_metadata={
-        'input_tokens': 903,
-        'output_tokens': 46,
-        'total_tokens': 949
-      }
-    ),
-    ToolMessage(
-      content="It's 60 degrees and foggy.",
-      name='search',
-      id='7d209e17-9612-4439-8e0f-6dbfca0a583b',
-      tool_call_id='call_q6av'
-    ),
-    AIMessage(
-      content='The weather in San Francisco is 60 degrees and foggy.',
-      response_metadata={
-        'token_usage': {
-          'completion_tokens': 14,
-          'prompt_tokens': 977,
-          'total_tokens': 991,
-          'completion_time': 0.043690019,
-          'prompt_time': 0.054365208,
-          'queue_time': 0.004546837000000005,
-          'total_time': 0.098055227
-        },
-        'model_name': 'llama3-70b-8192',
-        'system_fingerprint': 'fp_753a4aecf6',
-        'finish_reason': 'stop',
-        'logprobs': None
-      },
-      id='run-85b6ee46-684f-4cfa-8ea9-55000b3d8da1-0',
-      usage_metadata={
-        'input_tokens': 977,
-        'output_tokens': 14,
-        'total_tokens': 991
-      }
-    )
-  ]
-}
-'''
 
 
 
@@ -986,181 +849,6 @@ with open("agent_tool_call_visualization.png", "wb") as f:
 
 
 
-from langchain.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
-from langchain_core.utils.function_calling import convert_to_openai_function
-from langchain.output_parsers.openai_tools import JsonOutputToolsParser
-from langchain.output_parsers.openai_functions import PydanticOutputFunctionsParser
-from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-
-
-
-
-# Define your desired data structure.
-class AddCount(BaseModel):
-    """Will always add 10 to any number"""
-    initialnumber: List[int] = Field(default= [], description="Initial numbers present in the prompt.")
-    calculation: str = Field(default="", description="Details of the calculation that have create the 'result' number.")
-    result: int = Field(default= 0, description="Get the sum of the all the numbers. Then add 10 to the sum which will be final result. ")
-    error: str = Field(default= "", description="An error message when no number has been found in the prompt.")
-
-class CreateBulletPoints(BaseModel):
-    """Creates answers in the form of 3 bullet points."""
-    bulletpoints: str = Field(default="", description="Answer creating three bullet points that are very pertinent.")
-    typeofquery: str = Field(default="", description="tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.")
-
-
-
-
-
-
-
-
-# 1st Structured Output
-# Set up a parser + inject instructions into the prompt template.
-parser = PydanticOutputParser(pydantic_object=AddCount)
-format_instructions = parser.get_format_instructions()
-prompt = PromptTemplate(
-    template="Answer the user query.\n{format_instructions}\n{query}\n",
-    input_variables=["query"],
-    partial_variables={"format_instructions": format_instructions},
-)
-
-# And a query intended to prompt a language model to populate the data structure.
-prompt_and_model = prompt | groq_llm_mixtral_7b | parser
-response = prompt_and_model.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
-print("First way: ", response)
-#response = parser.invoke(output)
-#print("First way: ", response)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 2th: Structured Output
-parser = PydanticOutputFunctionsParser(pydantic_schema=AddCount)
-openai_functions = [convert_to_openai_function(AddCount)]
-chain = prompt | groq_llm_mixtral_7b.bind(functions=openai_functions) | parser
-response = chain.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
-print("Second way: ", response)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 3th: Structured Output
-# for AddCount
-#query_system = SystemMessage(content="Help user by answering always with 'initialnumber' (Initial numbers present in the prompt.), 'calculation' (Details of the calculation that have create the 'result' number), 'result' (Get the sum of the all the numbers. Then add 10 to the sum which will be final result) and 'error' (An error message when no number has been found in the prompt.), put it in a dictionary between mardown tags like ```markdown{initialnumber: list of Initial numbers present in the prompt. ,calculation: Details of the calculation that have create the 'result' number, result: Get the sum of the all the numbers. Then add 10 to the sum which will be final result, error: An error message when no number has been found in the prompt.}```.")
-# for CreateBulletPoints
-query_system = SystemMessage(content="Help user by answering always with 'bulletpoints' (Answer creating three bullet points that are very pertinent.), 'typeofquery' (tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.), put it in a dictionary between mardown tags like ```markdown{bulletpoints: Answer creating three bullet points that are very pertinent, typeofquery: tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'.}```.")
-query_human = HumanMessage(content="Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please.")
-
-# Invoke the model and get the structured output
-response = groq_llm_mixtral_7b.invoke([query_system, query_human])
-print(f"Third way: {response.content.split('```')[1].strip('markdown').strip()}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 4th: Structured Output
-model = groq_llm_mixtral_7b.bind_tools([AddCount])
-prompt = ChatPromptTemplate.from_messages(
-    [("system", "You are helpful assistant"), ("user", "{input}")]
-)
-parser = JsonOutputToolsParser()
-chain = prompt | model | parser
-response = chain.invoke({"input": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
-print(f"Fourth way: {response}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 5th: Structured Output
-# for CreateBulletPoints
-response_schemas = [
-    ResponseSchema(name="bulletpoints", description="Answer creating three bullet points that are very pertinent."),
-    ResponseSchema(name="typeofquery", description="tell if the query is just a sentence with the word 'sentence' or a question with the word 'question'."),
-]
-# for AddCount
-response_schemas2 = [
-    ResponseSchema(name="initialnumber", description="Initial numbers present in the prompt."),
-    ResponseSchema(name="calculation", description="Details of the calculation that have create the 'result' number."),
-    ResponseSchema(name="result", description="Get the sum of the all the numbers. Then add 10 to the sum which will be final result."),
-    ResponseSchema(name="error", description="An error message when no number has been found in the prompt."),
-]
-
-parser = StructuredOutputParser.from_response_schemas(response_schemas2)
-format_instructions = parser.get_format_instructions()
-'''
-example_json = """
-{
-    "initialnumber": [24, 3, 7, 6],
-    "calculation": "sum of all numbers equals 40 and adding 10 to the sum = 50",
-    "result": 50,
-    "error": ""
-}
-"""
-'''
-prompt = PromptTemplate(
-    template="answer the user query.\n{format_instructions}\nQuery: {query}",
-    input_variables=["query"],
-    partial_variables={"format_instructions": format_instructions},
-)
-
-model = groq_llm_mixtral_7b
-chain = prompt | model | parser
-response = chain.invoke({"query": "Tokyo is number 1 city to have more than 20 million habitants. Read description of tool and provide right answer for each fields please."})
-print(f"Fith way: {response}")
-#print("Fifth way second call with parser: ", parser.invoke(response))
 
 
 
