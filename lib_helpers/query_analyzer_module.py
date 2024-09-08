@@ -1,16 +1,10 @@
 """
 Here we will put all function that will be used to analyze, decompose, rephrase or other type of operation on user initial query
 """
-import os
-import re
-from typing import Tuple, List
-from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from prompts.prompts import llm_call_prompt
-from typing import Dict, Any, List, Optional
+from typing import Dict
 
-
-load_dotenv()
 
 # Utility function to determine if the query contains a PDF or URL
 def detect_content_type(llm: ChatGroq, query: str, prompt: Dict) -> str:

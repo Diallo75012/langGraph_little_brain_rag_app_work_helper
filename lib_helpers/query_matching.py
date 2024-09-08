@@ -28,7 +28,9 @@ from typing import Dict, List, Any
 from langgraph.graph import MessagesState
 
 
-load_dotenv()
+# load env vars
+load_dotenv(dotenv_path='.env', override=False)
+laod_dotenv(dotenv_path=".vars", override=True)
 
 # Connect to Redis
 REDIS_CLIENT = redis_client
@@ -46,7 +48,7 @@ def get_query_hash(query: str|list) -> str:
     return hashlib.sha256(query.encode()).hexdigest()
 
 # Record in Redis Both Kind of Keys (hashed for exact match and vector for semantic match)
-def cache_response(query: str, response: List[Dict[str, Any]], ttl: int = 3600) -> dict:
+def cache_response(query: str, response: List[Dict[str, Any]], ttl: int = int(os.getenv("TTL"))) -> dict:
     """Cache the response in Redis with both hash and vector representation."""
     query_hash = get_query_hash(query)
     print("\n\nQuery hash: ", query_hash)
@@ -119,7 +121,7 @@ def fetch_all_cached_embeddings() -> dict:
 
 
 # Semantic search function
-def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.7) -> List[Dict[str, Any]]|None:
+def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.7)) -> List[Dict[str, Any]]|None:
     """Perform semantic search on the cached query embeddings in Redis."""
 
     # Fetch all cached embeddings from Redis.
@@ -176,7 +178,7 @@ def perform_vector_search(table_name: str, query: str, score: float, top_n: int)
     update_retrieved_status(table_name, doc_id)
 
   # then cache the query with the result content obtained in the hash way and the vectorized way
-  cache_response(query, response, ttl=86400) # 86400=1d, 3600=1h
+  cache_response(query, response, ttl=int(os.getenv("TTL"))) # 86400=1d, 3600=1h
   return response
 
 #### This the meat function which does the exact match, then, semantic match, then the expensive vector database retireval and cache it if it finds anything for the response
@@ -189,8 +191,8 @@ def handle_query_by_calling_cache_then_vectordb_if_fail(state: MessagesState) ->
     last_message = messages[-1].content
     table_name: str = os.getenv("TABLE_NAME")
     query: str = last_message
-    score: float = 0.4
-    top_n: int = 2
+    score: float = float(os.getenv("SCORE"))
+    top_n: int = int(os.getenv("TOP_N"))
 
     try:
       # vectorize the query for semantic search
@@ -228,7 +230,7 @@ def handle_query_by_calling_cache_then_vectordb_if_fail(state: MessagesState) ->
         if vector_response:
             # Cache the new response with TTL
             try:
-              cache_response(query, vector_response, ttl=3600)
+              cache_response(query, vector_response, ttl=int(os.getenv("TTL")))
               return {"messages": [{"role": "ai", "content": f"success_vector_retrieved_and_cached: {vector_response}"}]}
             except Exception as e:
               return {"messages": [{"role": "ai", "content": f"error_vector_retrieved_and_cached: An error occured while trying to cache the vector search response: {e}"}]}

@@ -1,31 +1,15 @@
 import os
-import time
 import json
 # For str to dict
 import ast
 import re
-# for web request
-import requests
-# for DB
-import psycopg2
-from psycopg2 import sql
-# for subprocesses
-import subprocess
 # for dataframe
 import pandas as pd
 from uuid import uuid4
 # for typing func parameters and outputs and states
-from typing import Literal, TypedDict, Dict, List, Tuple, Any, Optional
-from pydantic import BaseModel
+from typing import Dict, List, Tuple, Any, Optional
 # for llm call with func or tool and prompts formatting
 from langchain_groq import ChatGroq
-# one is @tool decorator and the other Tool class
-from langchain_core.tools import tool, Tool
-from langchain_community.tools import (
-  # Run vs Results: Results have more information
-  DuckDuckGoSearchRun,
-  DuckDuckGoSearchResults
-) 
 from langchain_core.messages import (
   AIMessage,
   HumanMessage,
@@ -39,30 +23,14 @@ from langchain.prompts import (
   HumanMessagePromptTemplate,
   AIMessagePromptTemplate
 )
-from app_tools.app_tools import (
-  #import tool_internet, internet_search_tool, internet_search_query
-  # internet node & internet llm binded tool
-  tool_search_node,
-  llm_with_internet_search_tool
-)
-from langchain_core.output_parsers import JsonOutputParser
 # for graph creation and management
-from langgraph.checkpoint import MemorySaver
-from langgraph.graph import END, StateGraph, MessagesState
-from langgraph.prebuilt import ToolNode
-# langchain agent
-from langchain.agents import AgentExecutor
-from langgraph.prebuilt.tool_executor import ToolExecutor
-# for env. vars
-from dotenv import load_dotenv
-
+from langgraph.graph import MessagesState
 #### MODULES #####
 # PROMPTS
 from prompts.prompts import (
   detect_content_type_prompt,
   summarize_text_prompt,
-  generate_title_prompt,
-  generate_from_empty_prompt
+  generate_title_prompt
 )
 # USER QUERY ANALYSIS AND TRANSFORMATION
 from lib_helpers.query_analyzer_module import detect_content_type # returns `str`
@@ -76,36 +44,22 @@ from lib_helpers.chunking_module import (
   # returns `List[List[Dict[str,Any]]]`
   create_chunks_from_db_data
 )
-# REDIS CACHE RETRIEVER
-from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail # returns `Dict[str, Any]`
 # DB AND VECTORDB EMBEDDINGS AND RETRIEVAL
 from lib_helpers.embedding_and_retrieval import (
-  # returns `List[Dict[str, Any]]`
-  answer_retriever, 
   # returns `None\dict`
   embed_all_db_documents,
   # returns `List[Dict[str, Any]]`
   fetch_documents,
-  COLLECTION_NAME,
   CONNECTION_STRING,
-  update_retrieved_status,
-  clear_cache,
-  delete_table,
-  cache_document,
-  redis_client,
   create_table_if_not_exists,
-  connect_db,
-  embeddings
+  connect_db
 )
-from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail
 # STATES Persistence between graphs
 from app_states.app_graph_states import GraphStatePersistFlow
-# DOCKER REMOTE CODE EXECUTION
-# eg.: print(run_script_in_docker("test_dockerfile", "./app.py"))
-from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker # returns `Tuple[str, str]` stdout,stderr
 # to run next graphs
 from graphs.embedding_subgraph import embedding_subgraph
-fron graphs.retrieval_subgraph import retrieval_subgraph
+from graphs.retrieval_subgraph import retrieval_subgraph
+from graphs.primary_graph import primary_graph
 from llms import (
   groq_llm_mixtral_7b,
   groq_llm_llama3_8b,
@@ -114,18 +68,21 @@ from llms import (
   groq_llm_llama3_70b_tool_use,
   groq_llm_gemma_7b,
 )
+# for env. vars
+from dotenv import load_dotenv
 
 
 # load env vars
 load_dotenv(dotenv_path='.env', override=False)
+laod_dotenv(dotenv_path=".vars", override=True)
 
 # pggVector 
-collection_name = COLLECTION_NAME
+collection_name = os.getenv("COLLECTION_NAME")
 connection_string = CONNECTION_STRING
 
 # Connect to the PostgreSQL database (all imported from `embedding_and_retrieval`)
 conn = connect_db()
-create_table_if_not_exists()
+create_table_if_not_exists(os.getenv("TABLE_NAME"))
 
 #########################################################################################
 """
@@ -431,9 +388,9 @@ def process_query(state: MessagesState) -> Dict:
     
     # variables
     query = last_message
-    maximum_content_length = 200
-    maximum_title_length = 30
-    chunk_size = 250
+    maximum_content_length: int = int(os.getenv("MAXIMUM_CONTENT_LENGTH"))
+    maximum_title_length: int = int(os.getenv("MAXIMUM_TITLE_LENGTH"))
+    chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_DB"))
     detect_prompt_template = detect_content_type_prompt
     text_summary_prompt = summarize_text_prompt
     title_summary_prompt = generate_title_prompt
@@ -619,8 +576,8 @@ def custom_chunk_and_embed_to_vectordb(state: MessagesState) -> Dict[str, Any]:
   # vars
   # doc_name_or_url  3 maybe add here document name or url by saving it to dynamic env en loading it here so that we embed only the document concerning user needs
   table_name: str = os.getenv("TABLE_NAME") # "test_table"
-  chunk_size: int = 500
-  collection_name: str = COLLECTION_NAME
+  chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_EMBEDDINGS"))
+  collection_name: str = os.getenv("COLLECTION_NAME")
   connection_string: str = CONNECTION_STRING
   
   # Embed all documents in the database
@@ -665,6 +622,13 @@ def custom_chunk_and_embed_to_vectordb(state: MessagesState) -> Dict[str, Any]:
 ## 4- FETCH QUERY FROM REDIS CACHE, IF NOT FOUND ONLY THEN DO A VECTOR RETRIEVAL FROM VECTORDB
 
 #def query_redis_cache_then_vecotrdb_if_no_cache(table_name: str, query: str, score: float, top_n: int) -> List[Dict[str,Any]] | str | Dict[str,str]:
+"""
+This function won't be used check when all works fine `retrieval workflow as we are using directly the function `handle_query_by_calling_cache_then_vectordb_if_fail` in the retrieval graph as a Node function
+"""
+"""
+# REDIS CACHE RETRIEVER
+from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail # returns `Dict[str, Any]`
+
 def query_redis_cache_then_vecotrdb_if_no_cache(state: MessagesState) -> Dict[str,Any]:
 
   messages = state['messages']
@@ -722,7 +686,7 @@ def query_redis_cache_then_vecotrdb_if_no_cache(state: MessagesState) -> Dict[st
     # Dict[str,str]
     #return {"error": f"An error occured while trying to handle query by calling cache then vectordb if nothing found: {e}"}
     return {"messages": [{"role": "ai", "content": f"error_exception: An error occured while trying to handle query by calling cache then vectordb if nothing found: {e}"}]}
-
+"""
 
 ##### PROMPTS CREATION TO EXPLAIN TO LLM WHAT TO DO AND CONDITIONS IF ANY #####
 ## 6- CREATE PROMPT TO INSTRUCT LLM
@@ -734,8 +698,38 @@ But we will first here create prompts in the conventional way before testing the
 
 ## 10- CREATE CONFIGS FOR GRAPH INTERRUPTION OR OTHER NEEDS
 
+if __name__ == "__main__":
+
+  """
+    Start App Business Logic With Graph Running and All
+  """
+  # here we will start our main graph that will handle the logic in how the other graphs are being processed
+  def <primary_graph>():
+    count = 0
+    for step in app.stream(
+      {"messages": [SystemMessage(content="Primary Graph")]},
+      config={"configurable": {"thread_id": int(os.getenv("THREAD_ID"))}}):
+      count += 1
+      if "messages" in step:
+        output = beautify_output(step['messages'][-1].content
+        # update custom state graph messages list
+        GraphStatePersistFlow.subgraph_messages.append(str(output))
+        print(f"Step {count}: {beautify_output(step['messages'][-1].content)}")
+      else:
+        output = beautify_output(step)
+        # update custom state graph messages list
+        GraphStatePersistFlow.subgraph_messages.append(str(output))
+        print(f"Step {count}: {beautify_output(step)}")
 
 
+  # display graph drawing
+  graph_image = app.get_graph().draw_png()
+  with open("primary_graph.png", "wb") as f:
+    f.write(graph_image)
+
+  primary_graph() # use above template in primary_graph file
+  embedding_subgraph()
+  retrieval_subgraph()
 
 
 

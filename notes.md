@@ -2234,7 +2234,7 @@ parser = PydanticOutputParser(pydantic_object=CreateBulletPoints)
 prompt = PromptTemplate(
     template="Answer the user query.\n{format_instructions}\n{query}\n",
     input_variables=["query"],
-    partial_variables={"format_instructions": parser.get_format_instructions()},
+    partial_variables={"format33333333_instructions": parser.get_format_instructions()},
 )
 
 # And a query intended to prompt a language model to populate the data structure.
@@ -2639,7 +2639,8 @@ print("MONACO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}
 - reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
 - fix redis that doesn't save anything as value for key. find in the code where is the issue - OK for the moment works fine
 - adapt all functions to the new graph as those are exported to their to make the graph run, but not yet fixed.
-- tranfer all `test.py` function/graph/etc/... to get our initial graph to `app.py` 
+- tranfer all `test.py` function/graph/etc/... to get our initial graph to `app.py`
+- create all variables that can be put in .env file and create a .env file special for app vars so that we update only that .env file
 
 
 

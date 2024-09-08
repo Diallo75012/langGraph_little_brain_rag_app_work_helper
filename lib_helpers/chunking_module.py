@@ -5,17 +5,8 @@ The rule here is that we give a number for the chunk size, and it is going to fi
 We import the library embedding_an_retrieval and will embbed the chunks that we will create based on the content store in the postgresql database
 which as been collected by cleaning the document and storing the auqlity content only in postgresql.
 """
-import psycopg2
-import os
-import json
-from dotenv import load_dotenv
-from langchain.docstore.document import Document
 from typing import Dict, List, Any
-import requests
-from bs4 import BeautifulSoup
 
-
-load_dotenv()
 
 ### Create Chunks From Database Data
 # function that have th elogic to create chunks from database content and will make sure an overlapping of one row being last in one chunk and firt in the next chunk

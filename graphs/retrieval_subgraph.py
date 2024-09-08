@@ -6,7 +6,7 @@ This will permit to have an app with some logic out of the graph and have a more
 We will use custom states for the app in order to save the parameters that we want to persist between graphs using Pydantic `BaseModel` or `TypeScript`
 """
 import os
-from dotenv import load_dotenv
+import json
 # tools
 from app_tools.app_tools import (
   tool_search_node,
@@ -22,55 +22,59 @@ from llms import (
 )
 # States
 from app_states.app_graph_states import GraphStatePersistFlow
-# Langchain Helpers
-from langchain_groq import ChatGroq
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+# LLM chat call AI, System, Human
+from langchain_core.messages import (
+  AIMessage,
+  HumanMessage,
+  SystemMessage,
+  ToolMessage
+)
 # for graph creation and management
 from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
-from langgraph.prebuilt import ToolNode
 # helpers modules
 from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail
-from prompts.prompts import (
-  answer_user_with_report_from_retrieved_data_prompt,
-  structured_outpout_report_prompt
-)
+from prompts.prompts import answer_user_with_report_from_retrieved_data_prompt
 # display drawing of graph
 from IPython.display import Image, display
+# env vars
+from dotenv import load_dotenv
 
 
 # load env vars
 load_dotenv(dotenv_path='.env', override=False)
+load_dotenv(dotenv_path=".vars", override=True)
 
 
 # HELPER FUNCTIONS
 def message_to_dict(message):
-    if isinstance(message, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
-        return {
-            "content": message.content,
-            "additional_kwargs": message.additional_kwargs,
-            "response_metadata": message.response_metadata if hasattr(message, 'response_metadata') else None,
-            "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None,
-            "usage_metadata": message.usage_metadata if hasattr(message, 'usage_metadata') else None,
-            "id": message.id,
-            "role": getattr(message, 'role', None),
-        }
-    return message
+  if isinstance(message, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
+    return {
+      "content": message.content,
+      "additional_kwargs": message.additional_kwargs,
+      "response_metadata": message.response_metadata if hasattr(message, 'response_metadata') else None,
+      "tool_calls": message.tool_calls if hasattr(message, 'tool_calls') else None,
+      "usage_metadata": message.usage_metadata if hasattr(message, 'usage_metadata') else None,
+      "id": message.id,
+      "role": getattr(message, 'role', None),
+    }
+  return message
 
 def convert_to_serializable(data):
-    if isinstance(data, list):
-        return [convert_to_serializable(item) for item in data]
-    elif isinstance(data, dict):
-        return {k: convert_to_serializable(v) for k, v in data.items()}
-    elif isinstance(data, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
-        return message_to_dict(data)
-    return data
+  if isinstance(data, list):
+    return [convert_to_serializable(item) for item in data]
+  elif isinstance(data, dict):
+    return {k: convert_to_serializable(v) for k, v in data.items()}
+  elif isinstance(data, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
+    return message_to_dict(data)
+  return data
 
 def beautify_output(data):
-    serializable_data = convert_to_serializable(data)
-    return json.dumps(serializable_data, indent=4)
+  serializable_data = convert_to_serializable(data)
+  return json.dumps(serializable_data, indent=4)
 
-# NODE FUNCTIONS (This is just for few nodes like the answer ones for eg.)
+
+# NODE FUNCTIONS
 
 # for error handling Node
 def error_handler(state: MessagesState):
@@ -260,25 +264,25 @@ def retrieval_subgraph():
   count = 0
   for step in app.stream(
     {"messages": [SystemMessage(content="Graph Retrieval Webpage or PDF")]},
-    config={"configurable": {"thread_id": 42}}):
+    config={"configurable": {"thread_id": int(os.getenv("THREAD_ID"))}}):
     count += 1
     if "messages" in step:
       output = beautify_output(step['messages'][-1].content)
       print(f"Step {count}: {output}")
-      # update state to capture the last message
-      GraphStatePersistFlow.subgraph_message = output
+      # update custom state graph messages list
+      GraphStatePersistFlow.subgraph_messages.append(str(output))
     else:
       output = beautify_output(step)
       print(f"Step {count}: {output}")
-      # update state to capture the last message
-      GraphStatePersistFlow.subgraph_last_message = output
+      # update custom state graph messages list
+      GraphStatePersistFlow.subgraph_messages.append(str(output))
 
   # subgraph drawing
   graph_image = app.get_graph().draw_png()
-  with open("subgraph.png", "wb") as f:
+  with open("retrieval_subgraph.png", "wb") as f:
     f.write(graph_image)
 
-  return "subgraph job done"
+  return "subgraph retrieval job done"
 
 # can use this to test this graph as a standalone
 if __name__ == "__main__":

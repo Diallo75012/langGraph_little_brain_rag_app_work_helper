@@ -10,24 +10,22 @@ import psycopg2
 from psycopg2 import sql
 import uuid
 from typing import List, Dict, Any
-from dotenv import load_dotenv
 from langchain_community.vectorstores.pgvector import PGVector, DistanceStrategy
 from langchain.docstore.document import Document
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain.chains import RetrievalQA
-from langchain_community.chat_models import ChatOllama
 import redis
 from datetime import timedelta
-from typing import Dict, List
-
-
+from dotenv import load_dotenv
 
 
 #### UTILITY FUNCTIONS & CONF. VARS
-load_dotenv()
+# load env vars
+load_dotenv(dotenv_path='.env', override=False)
+load_dotenv(dotenv_path=".vars", override=True)
 
 # Use Ollama to create embeddings
-embeddings = OllamaEmbeddings(model="mistral:7b", temperature=0)
+embeddings = OllamaEmbeddings(model="mistral:7b", temperature=int(os.getenv("EMBEDDINGS_TEMPERATURE")))
 
 # DB CREATION
 def connect_db() -> psycopg2.extensions.connection:
@@ -36,10 +34,15 @@ def connect_db() -> psycopg2.extensions.connection:
                             host=os.getenv("HOST"), port=os.getenv("PORT"))
 
 # Create the table if it doesn't exist
-def create_table_if_not_exists():
+def create_table_if_not_exists(table_name: str = os.getenv("TABLE_NAME")):
     """Create the documents table if it doesn't exist."""
-    conn = connect_db()
-    cursor = conn.cursor()
+    try:
+      conn = connect_db()
+      cursor = conn.cursor()
+    except Exception as e:
+      print(f"Failed to connect to the database: {e}")
+      return {"messages": [{"role": "system", "content": f"error: An error occured while trying to connect to DB in 'store_dataframe_to_db': {e}"}]}
+
     """
     # Here:
       - doc_name: is the document where the data have been extracted from
@@ -48,20 +51,24 @@ def create_table_if_not_exists():
       - retrieved: is a boolean to check if document has been retrieved in the past or not to create later on, a cache of that data so that it will improve retrieval if we get same kind of query (using special agent node to check that, and cache Redis with TTL and reset of that column so we need a function that does that, one that created the cache based on that column True and put in Redis with TTL and another which clears the cache everyday.week.month.. and reset that column to False)
     """
     # table is called `test_table` make sure to change name for application when tests are done
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS test_table (
+    try:
+      cursor.execute(sql.SQL("""
+        CREATE TABLE IF NOT EXISTS {} (
             id UUID PRIMARY KEY,
             doc_name TEXT,
             title TEXT,
             content TEXT,
             retrieved BOOLEAN
         );
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
+      """).format(sql.Identifier(table_name)),)
+      cursor.execute(sql.SQL("UPDATE {} SET retrieved = 'TRUE' WHERE id = %s;").format(sql.Identifier(table_name)), [str(doc_id)])
+      conn.commit()
+      cursor.close()
+      conn.close()
+    except Exception as e:
+      return {"messages": [{"role": "ai", "content": f"error while trying to check if table exists: {e}"}]}
 
-create_table_if_not_exists()
+create_table_if_not_exists(os.getenv("TABLE_NAME"))
 
 
 
@@ -84,7 +91,7 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 redis_client = redis.StrictRedis(host=os.getenv("REDIS_HOST"), port=os.getenv("REDIS_PORT"), db=0)
 
 # cache doc in Redis function: qyeru_matching library have it's own cache_response so this function can be used as helper if needed
-def cache_document(doc_id: uuid.UUID, content: str, ttl: int = 3600):
+def cache_document(doc_id: uuid.UUID, content: str, ttl: int = int(os.getenv("TTL"))):
     """Cache the document content in Redis with a TTL (time-to-live)."""
     redis_client.setex(str(doc_id), timedelta(seconds=ttl), content)
 

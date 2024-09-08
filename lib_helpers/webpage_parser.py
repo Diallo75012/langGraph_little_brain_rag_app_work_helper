@@ -3,12 +3,8 @@
 ### Extract and Parse Web Page Content
 import requests
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
-import os
 from typing import Dict, Any, List, Optional
 
-
-load_dotenv()
 
 # Function to extract text and sections from a web page
 def scrape_website(url: str) -> Dict[str, Any]:

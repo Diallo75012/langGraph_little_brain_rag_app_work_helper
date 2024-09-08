@@ -3,12 +3,8 @@
 import pandas as pd
 import PyPDF2
 import re
-from dotenv import load_dotenv
-import os
 from typing import Dict, Any, List, Optional
 
-
-load_dotenv()
 
 # Function to extract text and sections from a PDF
 def pdf_to_sections(pdf_path) -> list:
