@@ -12,6 +12,14 @@ from app_tools.app_tools import (
   tool_search_node,
   llm_with_internet_search_tool
 )
+from llms import (
+  groq_llm_mixtral_7b,
+  groq_llm_llama3_8b,
+  groq_llm_llama3_8b_tool_use,
+  groq_llm_llama3_70b,
+  groq_llm_llama3_70b_tool_use,
+  groq_llm_gemma_7b,
+)
 # States
 from app_states.app_graph_states import GraphStatePersistFlow
 # Langchain Helpers
@@ -31,17 +39,9 @@ from prompts.prompts import (
 from IPython.display import Image, display
 
 
-# env vars
-load_dotenv()
+# load env vars
+load_dotenv(dotenv_path='.env', override=False)
 
-# LLMS
-groq_llm_mixtral_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_MIXTRAL_7B"),
-max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
-groq_llm_llama3_8b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_8B"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
-groq_llm_llama3_8b_tool_use = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_8B_TOOL_USE"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
-groq_llm_llama3_70b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_70B"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
-groq_llm_llama3_70b_tool_use = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_70B_TOOL_USE"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
-groq_llm_gemma_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_GEMMA_7B"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 
 # HELPER FUNCTIONS
 def message_to_dict(message):
@@ -86,19 +86,6 @@ def error_handler(state: MessagesState):
 def fetch_query_reformulated(state: MessagesState, custom_state: GraphStatePersistFlow = GraphStatePersistFlow()):
   query = custom_state.query_reformulated
   return {"messages": [query]}
-
-# For Internet Search Node
-def internet_search_agent(state: MessagesState):
-    messages = state['messages']
-    print("message state -1: ", messages[-1].content, "\nmessages state -2: ", messages[-2].content)
-    # print("messages from call_model func: ", messages)
-    response = llm_with_internet_search_tool.invoke(messages[-1].content)
-    if ("success_hash" or "success_semantic" or "success_vector_retrieved_and_cached") in messages[-1].content:
-      print(f"\nAnswer retrieved, create schema for tool choice of llm, last message: {messages[-1].content}")
-      response = llm_with_internet_search_tool.invoke(f"to the query {messages[-2].content} we found response in organization internal documents with content and source id: {messages[-1].content}. Analyze thouroughly the answer retrieved. Correlate the question to the answer retrieved. Find extra information by making an internet search about the content retrieved to answer the question the best.")
-    # print("response from should_continue func: ", response)
-    # We return a list, because this will get added to the existing list
-    return {"messages": [response]}
 
 # function that gets different important messages and query llm to make a report
 # maybe here we can see if those instead of getting vars from `MessagesState` we might want to use our custom state for that so other graphs can use those import information
@@ -199,10 +186,21 @@ def handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decisio
       conditional.write(f"- error last: {last_message}\n\n")
     return "error_handler"
 
+# For Internet Search Node
+def internet_search_agent(state: MessagesState):
+    messages = state['messages']
+    print("message state -1: ", messages[-1].content, "\nmessages state -2: ", messages[-2].content)
+    # print("messages from call_model func: ", messages)
+    response = llm_with_internet_search_tool.invoke(messages[-1].content)
+    if ("success_hash" or "success_semantic" or "success_vector_retrieved_and_cached") in messages[-1].content:
+      print(f"\nAnswer retrieved, create schema for tool choice of llm, last message: {messages[-1].content}")
+      response = llm_with_internet_search_tool.invoke(f"to the query {messages[-2].content} we found response in organization internal documents with content and source id: {messages[-1].content}. Analyze thouroughly the answer retrieved. Correlate the question to the answer retrieved. Find extra information by making an internet search about the content retrieved to answer the question the best.")
+    # print("response from should_continue func: ", response)
+    # We return a list, because this will get added to the existing list
+    return {"messages": [response]}
 
 # Initialize states
 workflow = StateGraph(MessagesState)
-
 
 # processing graph logic functions
 workflow.add_node("error_handler", error_handler) # will be used to end the graph returning the app system error messages
@@ -227,7 +225,6 @@ workflow.add_conditional_edges(
     #"dataframe_from_query"
 )
 
-
 # TOOL NODES
 workflow.add_edge("internet_search_agent", "answer_user")
 workflow.add_edge("internet_search_agent", "tool_search_node")
@@ -235,7 +232,7 @@ workflow.add_edge("tool_search_node", "answer_user_with_report")
 # ERROR AND LAST NODES
 workflow.add_edge("error_handler", "answer_user")
 workflow.add_edge("answer_user", END)
-#workflow.add_edge("answer_user_with_report", END)
+workflow.add_edge("answer_user_with_report", END)
 
 
 checkpointer = MemorySaver()
@@ -258,18 +255,18 @@ print("Final Message:", final_message)
 # using STREAM
 # we can maybe get the uder input first and then inject it as first message of the state: `{"messages": [HumanMessage(content=user_input)]}`
 
-def subgraph():
+def retrieval_subgraph():
   print("Sub_Graph")
   count = 0
   for step in app.stream(
-    {"messages": [SystemMessage(content="Graph Embedding Webpage or PDF")]},
+    {"messages": [SystemMessage(content="Graph Retrieval Webpage or PDF")]},
     config={"configurable": {"thread_id": 42}}):
     count += 1
     if "messages" in step:
       output = beautify_output(step['messages'][-1].content)
       print(f"Step {count}: {output}")
       # update state to capture the last message
-      GraphStatePersistFlow.ubgraph_message = output
+      GraphStatePersistFlow.subgraph_message = output
     else:
       output = beautify_output(step)
       print(f"Step {count}: {output}")
@@ -282,3 +279,12 @@ def subgraph():
     f.write(graph_image)
 
   return "subgraph job done"
+
+# can use this to test this graph as a standalone
+if __name__ == "__main__":
+
+  retrieval_subgraph()
+
+
+
+
