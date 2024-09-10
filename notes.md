@@ -1220,6 +1220,50 @@ We need to handle this error if it happens
 ```python
 groq.InternalServerError: Error code: 503 - {'error': {'message': 'Service Unavailable', 'type': 'internal_server_error'}}
 ```
+
+## Custom State Not Persisting Between Graphs When Using A Chain Of Specialized Graphs
+- Good to know: Langgraph clear th ememory so the there wont be any persistence in the values of the custom state
+
+- `Pydantic` is a stateless state class because it is made to validate the fields initially
+
+- We can use a memory system by saving to database the state, file or env vars.
+In this project we are using a dynamic env file that is saving the output of each graph for the next graph to be able to use it as first message
+
+- OR: save to file when one graph is done and load the state when the next graph is starting
+Eg.
+```python
+from pydantic import BaseModel
+import json
+
+# Pydantic state class
+class GraphState(BaseModel):
+    field1: str = ""
+    field2: int = 0
+    field3: list = []
+```
+
+# save state at the end of the graph
+```python
+def save_state_to_file(state: GraphState, filename="state.json"):
+    with open(filename, 'w') as f:
+        json.dump(state.dict(), f)
+
+# Example usage:
+graph_state = GraphState(field1="value1", field2=123, field3=["item1", "item2"])
+save_state_to_file(graph_state)
+```
+
+# laos state at the beginning of the next graph
+```python
+def load_state_from_file(filename="state.json") -> GraphState:
+    with open(filename, 'r') as f:
+        state_dict = json.load(f)
+    return GraphState(**state_dict)
+
+# Example usage:
+graph_state = load_state_from_file()
+print(graph_state)
+```
 _____________________________
 
 ##### CHAT VERSION
@@ -2640,8 +2684,9 @@ print("MONACO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}
 - fix redis that doesn't save anything as value for key. find in the code where is the issue - OK for the moment works fine
 - adapt all functions to the new graph as those are exported to their to make the graph run, but not yet fixed.
 - tranfer all `test.py` function/graph/etc/... to get our initial graph to `app.py`
-- create all variables that can be put in .env file and create a .env file special for app vars so that we update only that .env file
+- create all variables that can be put in .env file and create a .env file special for app vars so that we update only that .env file - OK
 
-
+# scenario
+Scenario of user requiring a full SEO report on a website using its main page
 
 

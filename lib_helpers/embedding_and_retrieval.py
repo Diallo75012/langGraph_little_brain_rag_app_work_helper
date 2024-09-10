@@ -309,12 +309,3 @@ def answer_retriever(table_name: str, query: str, relevance_score: float, top_n:
     return results
 
 
-
-
-
-
-
-
-
-
-

@@ -521,42 +521,6 @@ def handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decisio
       conditional.write(f"- error last: {last_message}\n\n")
     return "error_handler"
 
-#dataframe_from_query = process_query(groq_llm_mixtral_7b, query_url, 200, 30, 250, detect_content_type_prompt, summarize_text_prompt, generate_title_prompt)
-#print("DATAFRAME: ", dataframe_from_query)
-
-#store_dataframe_to_db = store_dataframe_to_db(dataframe_from_query[0], "test_table")
-#print("DB STORED DF: ", store_dataframe_to_db)
-
-#result = subprocess.run(
-#    ["psql", "-U", "creditizens", "-d", "creditizens_vector_db", "-c", "SELECT * FROM test_table"],
-#    capture_output=True,
-#    text=True
-#)
-#print("DATABASE CONTENT: ", result.stdout)
-
-#chunk_and_embed_from_db_data = custom_chunk_and_embed_to_vectordb("test_table", 500, COLLECTION_NAME, CONNECTION_STRING)
-#print("CHUNK AND EMBED: ", chunk_and_embed_from_db_data)
-
-#retrieve_data_from_query = query_redis_cache_then_vecotrdb_if_no_cache("test_table", "What are the AI tools of Chikara Houses?", 0.3, 2)
-#print("RETRIEVE DATA for query 'how to start monetize online presence?': ", json.dumps(retrieve_data_from_query, indent=4))
-
-#url_target_answer = "Explore AI tools by Chikara Houses in the Openai GPT store. Improve remote work and well-being with their GPTs. Visit their unique shopping rooms, too."
-
-'''
-1 - check if user have document or url if it is in present in DB or not
-    - if in doc/url DB, query the cache
-      - if not in cache we try vector retrieval of answer
-      - if not in vector we perform internet search
-        - then we answer to user with internet search response and cache the query/internet_answer
-    - if doc/url not in DB we `process_query` so create the dataframe and follow the flow
-      - store_dataframe_to_db
-        - custom_chunk_and_embed_to_vectordb
-          - 'query_redis_cache_then_vecotrdb_if_no_cache' which is gonna retrieve infor from db as redis have been checked before and nothing was there
-            - answer user with the retrieved vector response
-            - we can also perform internet search and get llm to combine vector retrieval if any with internet result to provide a formated answer
-
-                
-'''
 
 # Initialize states
 workflow = StateGraph(MessagesState)

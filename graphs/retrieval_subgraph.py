@@ -12,7 +12,7 @@ from app_tools.app_tools import (
   tool_search_node,
   llm_with_internet_search_tool
 )
-from llms import (
+from llms.llms import (
   groq_llm_mixtral_7b,
   groq_llm_llama3_8b,
   groq_llm_llama3_8b_tool_use,
@@ -20,8 +20,6 @@ from llms import (
   groq_llm_llama3_70b_tool_use,
   groq_llm_gemma_7b,
 )
-# States
-from app_states.app_graph_states import GraphStatePersistFlow
 # LLM chat call AI, System, Human
 from langchain_core.messages import (
   AIMessage,
@@ -38,12 +36,12 @@ from prompts.prompts import answer_user_with_report_from_retrieved_data_prompt
 # display drawing of graph
 from IPython.display import Image, display
 # env vars
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 
 
 # load env vars
 load_dotenv(dotenv_path='.env', override=False)
-load_dotenv(dotenv_path=".vars", override=True)
+load_dotenv(dotenv_path=".vars.env", override=True)
 
 
 # HELPER FUNCTIONS
@@ -76,6 +74,19 @@ def beautify_output(data):
 
 # NODE FUNCTIONS
 
+# For Internet Search Node
+def internet_search_agent(state: MessagesState):
+    messages = state['messages']
+    print("message state -1: ", messages[-1].content, "\nmessages state -2: ", messages[-2].content)
+    # print("messages from call_model func: ", messages)
+    response = llm_with_internet_search_tool.invoke(messages[-1].content)
+    if ("success_hash" or "success_semantic" or "success_vector_retrieved_and_cached") in messages[-1].content:
+      print(f"\nAnswer retrieved, create schema for tool choice of llm, last message: {messages[-1].content}")
+      response = llm_with_internet_search_tool.invoke(f"to the query {messages[-2].content} we found response in organization internal documents with content and source id: {messages[-1].content}. Analyze thouroughly the answer retrieved. Correlate the question to the answer retrieved. Find extra information by making an internet search about the content retrieved to answer the question the best.")
+    # print("response from should_continue func: ", response)
+    # We return a list, because this will get added to the existing list
+    return {"messages": [response]}
+
 # for error handling Node
 def error_handler(state: MessagesState):
   messages = state['messages']
@@ -87,35 +98,15 @@ def error_handler(state: MessagesState):
   return {"messages": [{"role": "ai", "content": f"An error occured, error message: {last_message}"}]}
 
 # to fetch query reformulated froms state
-def fetch_query_reformulated(state: MessagesState, custom_state: GraphStatePersistFlow = GraphStatePersistFlow()):
-  query = custom_state.query_reformulated
-  return {"messages": [query]}
-
-# function that gets different important messages and query llm to make a report
-# maybe here we can see if those instead of getting vars from `MessagesState` we might want to use our custom state for that so other graphs can use those import information
-def answer_user_with_report_from_retrieved_data(state: MessagesState):
+def fetch_query_reformulated(state: MessagesState):
   messages = state['messages']
-  #print("Message state: ", messages)
-  # # -4 user input, -3 data retrieved, -2 schema internet tool, -1 internet search result
-  # to be adapted for the logic of this graph....
-  internet_search_result = messages[-1].content
-  info_data_retrieved = messages[-3].content
-  question = messages[-4].content
-  prompt = answer_user_with_report_from_retrieved_data_prompt["human"]["template"]
-  prompt_human_with_input_vars_filled = eval(f'f"""{prompt}"""')
-  print(f"\nprompt_human_with_input_vars_filled: {prompt_human_with_input_vars_filled}\n")
-  system_message = SystemMessage(content=prompt_human_with_input_vars_filled)
-  human_message = HumanMessage(content=prompt_human_with_input_vars_filled)
-  messages = [system_message, human_message]
-  response = groq_llm_mixtral_7b.invoke(messages)
-  #formatted_answer = response.content.split("```")[1].strip("markdown").strip()
+  last_message = messages[-1].content
+  return {"messages": [{"role": "ai", "content": last_message}]}
 
-  # couldn't get llm to answer in markdown tags???? so just getting content saved to states
-  return {"messages": [{"role": "ai", "content": response.content}]}
 
 def answer_user_with_report(state: MessagesState):
   messages = state['messages']
-  #print("Message state: ", messages)
+  print("Answer User With Report State Messages: \n", "Message[-3]: ", messages[-3], "Message[-2]: ", messages[-2], "Message[-1]: ", messages[-1],)
 
   # check if tool have been called or not. if it haven't been called the -2 will be the final answer else we keep it the same -1 is the final answer
   if messages[-2].tool_calls == []:
@@ -139,7 +130,7 @@ def answer_user_with_report(state: MessagesState):
   return {"messages": [{"role": "ai", "content": formatted_answer}]}
 
 # answer_user Node function to be  adapted to this graph
-def final_answer_user(state: MessagesState):
+def answer_user(state: MessagesState):
   messages = state['messages']
   #print("Message state: ", messages)
   last_message = {"first_graph_message": messages[0].content, "second_graph_message": messages[1].content, "last_graph_message": messages[-1].content}
@@ -182,65 +173,70 @@ def handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decisio
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- nothing_in_cache_nor_vectordb: {last_message}\n\n\n\n")
     # will process user query and start the dataframe creation flow and embedding storage of that df
-    return "dataframe_from_query"
-    #return
+    return "internet_search_agent"
 
   else:
     with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
       conditional.write(f"- error last: {last_message}\n\n")
     return "error_handler"
+'''
+# reference to be used for last report message
+def answer_user_with_report_from_retrieved_data(state: MessagesState):
+  messages = state['messages']
+  #print("Message state: ", messages)
+  # # -4 user input, -3 data retrieved, -2 schema internet tool, -1 internet search result
+  internet_search_result = messages[-1].content
+  info_data_retrieved = messages[-3].content
+  question = messages[-4].content
+  prompt = answer_user_with_report_from_retrieved_data_prompt["human"]["template"]
+  prompt_human_with_input_vars_filled = eval(f'f"""{prompt}"""')
+  print(f"\nprompt_human_with_input_vars_filled: {prompt_human_with_input_vars_filled}\n")
+  system_message = SystemMessage(content=prompt_human_with_input_vars_filled)
+  human_message = HumanMessage(content=prompt_human_with_input_vars_filled)
+  messages = [system_message, human_message]
+  response = groq_llm_mixtral_7b.invoke(messages)
+  #formatted_answer = response.content.split("```")[1].strip("markdown").strip()
 
-# For Internet Search Node
-def internet_search_agent(state: MessagesState):
-    messages = state['messages']
-    print("message state -1: ", messages[-1].content, "\nmessages state -2: ", messages[-2].content)
-    # print("messages from call_model func: ", messages)
-    response = llm_with_internet_search_tool.invoke(messages[-1].content)
-    if ("success_hash" or "success_semantic" or "success_vector_retrieved_and_cached") in messages[-1].content:
-      print(f"\nAnswer retrieved, create schema for tool choice of llm, last message: {messages[-1].content}")
-      response = llm_with_internet_search_tool.invoke(f"to the query {messages[-2].content} we found response in organization internal documents with content and source id: {messages[-1].content}. Analyze thouroughly the answer retrieved. Correlate the question to the answer retrieved. Find extra information by making an internet search about the content retrieved to answer the question the best.")
-    # print("response from should_continue func: ", response)
-    # We return a list, because this will get added to the existing list
-    return {"messages": [response]}
+  # couldn't get llm to answer in markdown tags???? so just getting content saved to states
+  return {"messages": [{"role": "ai", "content": response.content}]}
+'''
+
 
 # Initialize states
 workflow = StateGraph(MessagesState)
 
-# processing graph logic functions
-workflow.add_node("error_handler", error_handler) # will be used to end the graph returning the app system error messages
+# retrieval main functions
 workflow.add_node("fetch_query_reformulated", fetch_query_reformulated)
 workflow.add_node("handle_query_by_calling_cache_then_vectordb_if_fail", handle_query_by_calling_cache_then_vectordb_if_fail)
 # tools
 workflow.add_node("internet_search_agent", internet_search_agent)
 workflow.add_node("tool_search_node", tool_search_node)
-# special andwser report fetching user query, database retrieved data and internet search result
-workflow.add_node("answer_user_with_report_from_retrieved_data", answer_user_with_report_from_retrieved_data)
-workflow.add_node("answer_with_report", answer_with_report)
-workflow.add_node("answer_user", final_answer_user)
-#workflow.add_node("", internet_research_user_query)
+# answer
+workflow.add_node("answer_with_report", answer_user_with_report)
+workflow.add_node("answer_user", answer_user)
+# errors
+workflow.add_node("error_handler", error_handler)
 
+# edges
 workflow.set_entry_point("fetch_query_reformulated")
 workflow.add_edge("fetch_query_reformulated", "handle_query_by_calling_cache_then_vectordb_if_fail")
-
 # `handle_query_by_calling_cache_then_vectordb_if_fail` edge
 workflow.add_conditional_edges(
     "handle_query_by_calling_cache_then_vectordb_if_fail",
     handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decision,
     #"dataframe_from_query"
 )
-
-# TOOL NODES
-workflow.add_edge("internet_search_agent", "answer_user")
+# tool nodes
 workflow.add_edge("internet_search_agent", "tool_search_node")
-workflow.add_edge("tool_search_node", "answer_user_with_report")
-# ERROR AND LAST NODES
+workflow.add_edge("tool_search_node", "answer_with_report")
+# answer user
 workflow.add_edge("error_handler", "answer_user")
 workflow.add_edge("answer_user", END)
-workflow.add_edge("answer_user_with_report", END)
+workflow.add_edge("answer_with_report", END)
 
-
+# compile with memory
 checkpointer = MemorySaver()
-app = workflow.compile(checkpointer=checkpointer)
+graph_retrieval = workflow.compile(checkpointer=checkpointer)
 
 
 '''
@@ -259,36 +255,36 @@ print("Final Message:", final_message)
 # using STREAM
 # we can maybe get the uder input first and then inject it as first message of the state: `{"messages": [HumanMessage(content=user_input)]}`
 
-def retrieval_subgraph():
-  print("Sub_Graph")
+def retrieval_subgraph(user_query):
+  print("Retrieval Graph")
   count = 0
-  for step in app.stream(
-    {"messages": [SystemMessage(content="Graph Retrieval Webpage or PDF")]},
+  for step in graph_retrieval.stream(
+    {"messages": [SystemMessage(content=user_query)]},
     config={"configurable": {"thread_id": int(os.getenv("THREAD_ID"))}}):
     count += 1
     if "messages" in step:
       output = beautify_output(step['messages'][-1].content)
       print(f"Step {count}: {output}")
-      # update custom state graph messages list
-      GraphStatePersistFlow.subgraph_messages.append(str(output))
     else:
       output = beautify_output(step)
       print(f"Step {count}: {output}")
-      # update custom state graph messages list
-      GraphStatePersistFlow.subgraph_messages.append(str(output))
 
   # subgraph drawing
-  graph_image = app.get_graph().draw_png()
+  graph_image = graph_retrieval.get_graph().draw_png()
   with open("retrieval_subgraph.png", "wb") as f:
     f.write(graph_image)
 
-  return "subgraph retrieval job done"
+  if "success" in os.getenv("EMBEDDING_GRAPH_RESULT"):
+    # tell to start `retrieval` graph
+    return "retrieval"
+  return "error"
 
+'''
 # can use this to test this graph as a standalone
 if __name__ == "__main__":
 
   retrieval_subgraph()
-
+'''
 
 
 

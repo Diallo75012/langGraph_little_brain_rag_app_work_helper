@@ -8,7 +8,7 @@ from langchain_community.tools import (
   DuckDuckGoSearchRun,
   DuckDuckGoSearchResults
 )
-from llms import (
+from llms.llms import (
   groq_llm_mixtral_7b,
   groq_llm_llama3_8b,
   groq_llm_llama3_8b_tool_use,

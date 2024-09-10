@@ -30,7 +30,7 @@ from langgraph.graph import MessagesState
 
 # load env vars
 load_dotenv(dotenv_path='.env', override=False)
-laod_dotenv(dotenv_path=".vars", override=True)
+load_dotenv(dotenv_path=".vars", override=True)
 
 # Connect to Redis
 REDIS_CLIENT = redis_client
@@ -121,7 +121,7 @@ def fetch_all_cached_embeddings() -> dict:
 
 
 # Semantic search function
-def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.7)) -> List[Dict[str, Any]]|None:
+def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0.7) -> List[Dict[str, Any]]|None:
     """Perform semantic search on the cached query embeddings in Redis."""
 
     # Fetch all cached embeddings from Redis.
