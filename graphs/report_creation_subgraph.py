@@ -24,7 +24,6 @@ from langchain_core.messages import (
 from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
 # helpers modules
-from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail
 from prompts.prompts import answer_user_with_report_from_retrieved_data_prompt
 # display drawing of graph
 from IPython.display import Image, display
@@ -80,29 +79,33 @@ def internet_search_agent(state: MessagesState):
     # We return a list, because this will get added to the existing list
     return {"messages": [response]}
 
-# for error handling Node
-def error_handler(state: MessagesState):
-  messages = state['messages']
-  last_message = messages[-1].content
-  
-  with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"\n\nerror handler called (from subgraph): {last_message}\n\n")
-
-  return {"messages": [{"role": "ai", "content": f"An error occured, error message: {last_message}"}]}
-
 # to fetch query reformulated froms state
-def fetch_query_reformulated(state: MessagesState):
+def fetch_answer_and_query_reformulated(state: MessagesState):
   messages = state['messages']
-  last_message = messages[-1].content
-  return {"messages": [{"role": "ai", "content": last_message}]}
+  response_from_previous_graph = messages[-1].content # make sure that the passed in content is a json str, next node will use json.loads to have it as dict and fetch what needed
+  reformulated_initial_question = os.getenv("QUERY_REFORMULATED")
+  return {"messages": [{"role": "ai", "content": response_from_previous_graph}, {"role": "ai", "content": reformulated_initial_question}]}
 
 
 def answer_user_with_report(state: MessagesState):
+  """
+    See if we can use here our structured output in order to have the report the way we want it to be or we can use the previous llm agent nodes to have this structured output
+  """
   messages = state['messages']
-  print("Answer User With Report State Messages: \n", "Message[-3]: ", messages[-3], "Message[-2]: ", messages[-2], "Message[-1]: ", messages[-1],)
+  last_message = message[-1].content # make this last message be the report that we get form the llm agent
+  
+  # create the report
+  report_path = os.getenv("REPORT_PATH")
+  with open(report_path, "w", encoding="utf-8") as report:
+    report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
+    report.write(last_message)
+
+  # this is just to check the history of messages -1, -2 and -3
+  print("Answer User With Report State Messages: ", "\nMessage[-3]: ", messages[-3], "\nMessage[-2]: ", messages[-2], "\nMessage[-1]: ", messages[-1],)
 
   # check if tool have been called or not. if it haven't been called the -2 will be the final answer else we keep it the same -1 is the final answer
   if messages[-2].tool_calls == []:
+    # we try this when no tool has been used using prompting technique to request a report from llm
     try:
       last_message = messages[-1].content
       response = groq_llm_mixtral_7b.invoke("I need a detailed report about. Put your report answer between markdown tags ```markdown ```: {last_message}")
@@ -110,87 +113,22 @@ def answer_user_with_report(state: MessagesState):
     except IndexError as e:
       formatted_answer = response.content
       print(f"We found an error. answer returned by llm withotu markdown tags: {e}")
-    return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
-  # otherwise we return -1 message as it is the tool answer
+    return {"messages": [{"role": "ai", "content": formatted_answer}]}
+
+  # otherwise we return -1 message as it is the tool answer and tool has been used
   try:
     last_message = messages[-2].content
     response = groq_llm_mixtral_7b.invoke("I need a detailed report about. Put your report answer between markdown tags ```markdown ```: {last_message}")
     formatted_answer = response.content.split("```")[1].strip("markdown").strip()
   except IndexError as e:
     formatted_answer = response.content
-    print(f"We found an error. answer returned by llm without markdown tags: {e}")
-  #formatted_answer_structured_output = response
-  return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
+    print(f"We found an error. answer returned by llm withotu markdown tags: {e}")
 
-# write report to file that is going to be read by the app and returned to user
-def write_report_to_file(state: MessagesState):
-  messages = state['messages']
-  last_message = messages[-1].content
-  report_path = os.getenv("REPORT_PATH")
-  with open(report_path, "w", encoding="utf-8") as report:
-    report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
-    report.write(last_message)
-  # save reuslt to .var env file for app business logic to know that next graph don't need to be started as report has been created
-  set_key(".vars.env", "RETRIEVAL_GRAPH_RESULT", f"report:{report_path}")
-  load_dotenv(dotenv_path=".vars.env", override=True)
+  return {"messages": [{"role": "ai", "content": formatted_answer}]}
 
-  return {"messages": [{"role": "ai", "content": f"report saved to file: {report_path}"}]}
-
-# answer_user Node function to be  adapted to this graph
-def answer_user(state: MessagesState):
-  messages = state['messages']  
-  # we need to have this ai content message be a string otherwise we will get a pydantic validation error expecting a str after we could deserialize this using `json.laods`
-  last_message = json.dumps({"first_graph_message": messages[0].content, "second_graph_message": messages[1].content, "last_graph_message": messages[-1].content})
-
-  # save reuslt to .var env file
-  set_key(".vars.env", "RETRIEVAL_GRAPH_RESULT", f"success:{last_message}")
-  load_dotenv(dotenv_path=".vars.env", override=True)
-
-  return {"messages": [{"role": "ai", "content": last_message}]}
 
 # CONDITIONAL EDGES FUNCTIONS
-# `handle_query_by_calling_cache_then_vectordb_if_fail` conditional edge function
-def handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decision(state: MessagesState):
-  messages = state['messages']
-  last_message = messages[-1].content
-  with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-    conditional.write("\nhandle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decision:\n")
-    conditional.write(f"- last message: {last_message}")
 
-  if ("error_hash" or "error_semantic" or "error_vector_retrieved_and_cached" or "error_vector" or "error_cache_and_vector_retrieval") in last_message:
-    with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"- error: {last_message}\n\n")
-    return "error_handler"
-
-  elif "success_hash" in last_message:
-    with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"- success_hash: {last_message}\n\n")
-    #return "chunk_and_embed_from_db_data"
-    #return "internet_search_agent"
-    return "answer_user"
-
-  elif "success_semantic" in last_message:
-    with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"- success_semantic: {last_message}\n\n\n\n")
-    #return "internet_search_agent"
-    return "answer_user"
-
-  elif "success_vector_retrieved_and_cached" in last_message:
-    with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"- success_vector_retrieved_and_cached: {last_message}\n\n")
-    #return "internet_search_agent"
-    return "answer_user"
-
-  elif "nothing_in_cache_nor_vectordb" in last_message:
-    with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"- nothing_in_cache_nor_vectordb: {last_message}\n\n\n\n")
-    # will process user query and start the dataframe creation flow and embedding storage of that df
-    return "internet_search_agent"
-
-  else:
-    with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"- error last: {last_message}\n\n")
-    return "error_handler"
 '''
 # reference to be used for last report message
 def answer_user_with_report_from_retrieved_data(state: MessagesState):
@@ -217,39 +155,26 @@ def answer_user_with_report_from_retrieved_data(state: MessagesState):
 # Initialize states
 workflow = StateGraph(MessagesState)
 
-# retrieval main functions
-workflow.add_node("fetch_query_reformulated", fetch_query_reformulated)
-workflow.add_node("handle_query_by_calling_cache_then_vectordb_if_fail", handle_query_by_calling_cache_then_vectordb_if_fail)
+# report data collection main functions
+workflow.add_node("fetch_answer_and_query_reformulated", fetch_answer_and_query_reformulated)
 # tools
 workflow.add_node("internet_search_agent", internet_search_agent)
 workflow.add_node("tool_search_node", tool_search_node)
 # answer
 workflow.add_node("answer_with_report", answer_user_with_report)
-workflow.add_node("write_report_to_file", write_report_to_file)
-workflow.add_node("answer_user", answer_user)
-# errors
-workflow.add_node("error_handler", error_handler)
 
 # edges
 workflow.set_entry_point("fetch_query_reformulated")
-workflow.add_edge("fetch_query_reformulated", "handle_query_by_calling_cache_then_vectordb_if_fail")
-# `handle_query_by_calling_cache_then_vectordb_if_fail` edge
-workflow.add_conditional_edges(
-    "handle_query_by_calling_cache_then_vectordb_if_fail",
-    handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decision,
-    #"dataframe_from_query"
-)
+workflow.add_edge("fetch_query_reformulated", "internet_search_agent")
 # tool nodes
 workflow.add_edge("internet_search_agent", "tool_search_node")
 workflow.add_edge("tool_search_node", "answer_with_report")
 # answer user
-workflow.add_edge("error_handler", "answer_user")
-workflow.add_edge("answer_user", END)
 workflow.add_edge("answer_with_report", END)
 
 # compile with memory
 checkpointer = MemorySaver()
-graph_retrieval = workflow.compile(checkpointer=checkpointer)
+graph_report_creation = workflow.compile(checkpointer=checkpointer)
 
 
 '''
@@ -268,10 +193,10 @@ print("Final Message:", final_message)
 # using STREAM
 # we can maybe get the uder input first and then inject it as first message of the state: `{"messages": [HumanMessage(content=user_input)]}`
 
-def retrieval_subgraph(user_query):
+def report_creation_subgraph(retrieval_result):
   print("Retrieval Graph")
   count = 0
-  for step in graph_retrieval.stream(
+  for step in graph_report_creation.stream(
     {"messages": [SystemMessage(content=user_query)]},
     config={"configurable": {"thread_id": int(os.getenv("THREAD_ID"))}}):
     count += 1
@@ -283,21 +208,20 @@ def retrieval_subgraph(user_query):
       print(f"Step {count}: {output}")
 
   # subgraph drawing
-  graph_image = graph_retrieval.get_graph().draw_png()
-  with open("retrieval_subgraph.png", "wb") as f:
+  graph_image = graph_report_creation.get_graph().draw_png()
+  with open("report_creation_subgraph.png", "wb") as f:
     f.write(graph_image)
 
-  if "success" in os.getenv("EMBEDDING_GRAPH_RESULT"):
+  if "success" in os.getenv("REPORT_GRAPH_RESULT"):
     # tell to start `retrieval` graph
-    return "retrieval"
+    return "success"
   return "error"
 
 '''
 # can use this to test this graph as a standalone
 if __name__ == "__main__":
 
-  retrieval_subgraph()
+  report_creation_subgraph()
 '''
-
 
 

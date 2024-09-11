@@ -15,6 +15,7 @@ from app_states.app_graph_states import GraphStatePersistFlow
 # to run next graphs
 from graphs.embedding_subgraph import embedding_subgraph
 from graphs.retrieval_subgraph import retrieval_subgraph
+from graphs.report_creation_subgraph import report_creation_subgraph
 from graphs.primary_graph import primary_graph
 from llms.llms import (
   groq_llm_mixtral_7b,
@@ -89,6 +90,29 @@ if __name__ == "__main__":
         raise Exception(f"An error occured while running 'retrieval_flow'")
     except Exception as e:
       raise Exception(f"An error occured while running 'retrieval_flow': {e}")
+
+  retrieval_graph_result = os.getenv("RETRIEVAL_GRAPH_RESULT")
+  print("2: ", embedding_graph_result)
+
+  # Get the reformulated initial user query for the retrieval graph
+  load_dotenv(dotenv_path=".vars.env", override=True)
+  reformulated_query = os.getenv("QUERY_REFORMULATED")
+
+  # report creation graph
+  if retrieval_flow == "report" and "success" in retrieval_graph_result:
+    print("Starting Retrieval and Report Creation")
+    try:
+      report_creation_flow = report_creation_subgraph(retrieval_graph_result)
+      if "error" in retrieval_flow.lower():
+        raise Exception(f"An error occured while running 'retrieval_flow'")
+    except Exception as e:
+      raise Exception(f"An error occured while running 'retrieval_flow': {e}")
+  elif "report" in retrieval_graph_result:
+    report_path = retrieval_graph_result.split(":")[-1].strip()
+    with open(report_path, "r", encoding="utf-8") as report:
+      report_content = report.read()
+    print(f"Report content (markdown) present at {os.getenv('REPORT_PATH')}: \n", report_content)
+    return report_content
 
 
 
