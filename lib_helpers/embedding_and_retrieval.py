@@ -25,7 +25,7 @@ load_dotenv(dotenv_path='.env', override=False)
 load_dotenv(dotenv_path=".vars", override=True)
 
 # Use Ollama to create embeddings
-embeddings = OllamaEmbeddings(model="mistral:7b", temperature=int(os.getenv("EMBEDDINGS_TEMPERATURE")))
+embeddings = OllamaEmbeddings(model="mistral:7b", temperature=float(os.getenv("EMBEDDINGS_TEMPERATURE")))
 
 # DB CREATION
 def connect_db() -> psycopg2.extensions.connection:

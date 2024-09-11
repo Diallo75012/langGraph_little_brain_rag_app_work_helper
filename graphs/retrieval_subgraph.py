@@ -133,7 +133,9 @@ def answer_user_with_report(state: MessagesState):
 def answer_user(state: MessagesState):
   messages = state['messages']
   #print("Message state: ", messages)
-  last_message = {"first_graph_message": messages[0].content, "second_graph_message": messages[1].content, "last_graph_message": messages[-1].content}
+  
+  # we need to have this ai content message be a string otherwise we will get a pydantic validation error expecting a str after we could deserialize this using `json.laods`
+  last_message = json.dumps({"first_graph_message": messages[0].content, "second_graph_message": messages[1].content, "last_graph_message": messages[-1].content})
   return {"messages": [{"role": "ai", "content": last_message}]}
 
 # CONDITIONAL EDGES FUNCTIONS

@@ -57,8 +57,6 @@ from lib_helpers.embedding_and_retrieval import (
   create_table_if_not_exists,
   connect_db
 )
-# STATES Persistence between graphs
-from app_states.app_graph_states import GraphStatePersistFlow
 # to run next graphs
 from llms.llms import (
   groq_llm_mixtral_7b,
@@ -69,7 +67,7 @@ from llms.llms import (
   groq_llm_gemma_7b,
 )
 # for env. vars
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 
 
 # load env vars
@@ -240,18 +238,14 @@ def get_final_df(llm: ChatGroq, is_url: bool, url_or_doc_path: str, maximum_cont
     # create the chunks. make sure it is a list of data passed in [dict]
     chunks =  create_chunks_from_webpage_data([webpage_data], chunk_size)
     # put content in a pandas dataframe. make sure it is a list of dict `[dict]` and not a 'dict'. chunks returned is a list[dict]
-    """
-     # limit the df for the moment  just to test, when app works fine we can release this constraint:
-       `df = pd.DataFrame(chunks)[0:12]`
-    """
-    df = pd.DataFrame(chunks)[0:3]
+    df = pd.DataFrame(chunks)#[0:3]
     print("DF: ", df.head())
   else:
     # Parse the PDF and create a DataFrame
     pdf_data = pdf_to_sections(url_or_doc_path)
     print("PDF DATA: ", pdf_data)
     df = pd.DataFrame(pdf_data)
-    print("DF: ", df.head(10))
+    print("DF: ", df.head())
 
   ## CREATE FINAL DATAFRAME
 
@@ -403,9 +397,11 @@ def process_query(state: MessagesState) -> Dict:
 
     # update intermediary state as we need query for retrieval
     if content_dict["question"]:
-      GraphStatePersistFlowquery_reformulated = content_dict["question"]
+      set_key(".vars.env", "QUERY_REFORMULATED", content_dict["question"])
+      load_dotenv(dotenv_path=".vars.env", override=True)
     else:
-      GraphStatePersistFlowquery_reformulated = content_dict["text"]
+      set_key(".vars.env", "QUERY_REFORMULATED", content_dict["text"])
+      load_dotenv(dotenv_path=".vars.env", override=True)
 
     # print content to see how it looks like, will it getthe filename if pdf or the full correct url if url...
     print("content_dict: ", content_dict)

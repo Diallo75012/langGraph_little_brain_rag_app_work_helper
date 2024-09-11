@@ -43,8 +43,8 @@ def get_query_hash(query: str|list) -> str:
     """Generate a hash for the query."""
     if isinstance(query, list):
       query = str(tuple(query))
-      print("\n\nQuery is a list therefore an embedding, see str(tuple(version)) before hash: ", query, "Type: ", type(query))
-    print("\n\nQuery is a str before hash version: ", query, "Type: ", type(query))
+      #print("\n\nQuery is a list therefore an embedding, see str(tuple(version)) before hash: ", query, "Type: ", type(query))
+    #print("\n\nQuery is a str before hash version: ", query, "Type: ", type(query))
     return hashlib.sha256(query.encode()).hexdigest()
 
 # Record in Redis Both Kind of Keys (hashed for exact match and vector for semantic match)
@@ -63,10 +63,10 @@ def cache_response(query: str, response: List[Dict[str, Any]], ttl: int = int(os
     vector_key = f"vector:{query_vector_tuple_hash}"
 
     # Store Query Embeddings as Hash Key and as Value the Vector of the Query for Semantic Search and the Response to Render Corresponding Answer
-    print({
-        "embedding": query_vector,
-        "response": response
-    })
+    #print({
+    #    "embedding": query_vector,
+    #    "response": response
+    #})
     REDIS_CLIENT.setex(vector_key, timedelta(seconds=ttl), json.dumps({
         "embedding": query_vector,  # Store original embedding for easy fetching when performing similarity search
         "response": response
@@ -83,14 +83,14 @@ def fetch_cached_response_by_hash(query: str) -> dict|List[Dict[str,Any]]|None:
     # search using hash of query
     query_hash = get_query_hash(query)
     data_from_query_hash = REDIS_CLIENT.get(query_hash)
-    print("Get from Redis using query ONLY hash: ", query_hash, " ; Response from Redis: ", data_from_query_hash)
+    #print("Get from Redis using query ONLY hash: ", query_hash, " ; Response from Redis: ", data_from_query_hash)
     if data_from_query_hash:
       response.append(json.loads(data_from_query_hash) if data_from_query_hash else None)
     # search using hash of vector of query
     query_vector = EMBEDDINGS.embed_query(query)
     hash_query_vector_tuple = get_query_hash(query_vector)
     data_from_vector_hash = REDIS_CLIENT.get(hash_query_vector_tuple)
-    print("Get from Redis using query VECTOR(tuppled) hash: ", hash_query_vector_tuple, " ; Response from Redis: ", data_from_vector_hash)
+    #print("Get from Redis using query VECTOR(tuppled) hash: ", hash_query_vector_tuple, " ; Response from Redis: ", data_from_vector_hash)
     if data_from_vector_hash:
       response.append(json.loads(data_from_vector_hash) if data_from_vector_hash else None)
     print(f"Fetch cached response by hash response : {response}")
@@ -126,7 +126,7 @@ def perform_semantic_search_in_redis(query_embedding: list, threshold: float = 0
 
     # Fetch all cached embeddings from Redis.
     all_embeddings = fetch_all_cached_embeddings()
-    print("All embeddings for seamantic search in Redis: ", all_embeddings)
+    #print("All embeddings for seamantic search in Redis: ", all_embeddings)
 
     # If there are no embeddings in Redis, return None.
     if not all_embeddings:

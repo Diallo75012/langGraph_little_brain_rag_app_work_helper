@@ -30,9 +30,9 @@ There is not extraction refining process implemented but would be amazing...
 - [x] test functions along the way in the workflow of agents and make sure of the output type matches and that it works
 - [x] create prompts along the way and store those in the prompt file using naming `<name_of_function>_prompt`
 - [x] Read comment in `query_matching.py` to create those logics and functions and nodes and tools functions
-- [ ] create all mini tools
-- [ ] finish the user query graph until data is embedded or user get response if nothing to embed, therefore, introduce the caching layer
-- [ ] Find interesting storytelling for use case an interesting use case
+- [x] create all mini tools
+- [x] finish the user query graph until data is embedded or user get response if nothing to embed, therefore, introduce the caching layer
+- [x] Find interesting storytelling for use case an interesting use case
 Docs: [LangGraph Doc Workflow Example](https://langchain-ai.github.io/langgraph/tutorials/rag/langgraph_self_rag_local/)
 
 
