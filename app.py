@@ -48,7 +48,10 @@ if __name__ == "__main__":
   # save query to sdtate
   custom_state.user_initial_query = user_query
   print("custom graph user query field value: ", custom_state.user_initial_query)
-  
+
+  """
+    QUERY ANALYSIS
+  """
   # start primary graph
   print("Starting Primary Graph")
   try:
@@ -58,11 +61,13 @@ if __name__ == "__main__":
   except Exception as e:
     raise Exception(f"An error occured while running 'primary_flow': {e}")
 
+  """
+    EMBEDDINGS
+  """
   # Get primary graph parquet path fromt he .var env file
   load_dotenv(dotenv_path=".vars.env", override=True)
   parquet_file_path = os.getenv("PARQUET_FILE_PATH")
   print("1: ", parquet_file_path)
-
 
   # embedding graph
   if primary_flow == "embeddings" and parquet_file_path:
@@ -74,9 +79,13 @@ if __name__ == "__main__":
     except Exception as e:
       raise Exception("An error occured while running 'embedding_flow': {e}")
 
+
   embedding_graph_result = os.getenv("EMBEDDING_GRAPH_RESULT")
   print("2: ", embedding_graph_result)
 
+  """
+    RETRIEVAL
+  """
   # Get the reformulated initial user query for the retrieval graph
   load_dotenv(dotenv_path=".vars.env", override=True)
   reformulated_query = os.getenv("QUERY_REFORMULATED")
@@ -94,6 +103,9 @@ if __name__ == "__main__":
   retrieval_graph_result = os.getenv("RETRIEVAL_GRAPH_RESULT")
   print("2: ", embedding_graph_result)
 
+  """
+    REPORT
+  """
   # Get the reformulated initial user query for the retrieval graph
   load_dotenv(dotenv_path=".vars.env", override=True)
   reformulated_query = os.getenv("QUERY_REFORMULATED")
@@ -102,6 +114,7 @@ if __name__ == "__main__":
   if retrieval_flow == "report" and "success" in retrieval_graph_result:
     print("Starting Retrieval and Report Creation")
     try:
+      retrieval_graph_result = retrieval_graph_result.split(":")[-1].strip()
       report_creation_flow = report_creation_subgraph(retrieval_graph_result)
       if "error" in retrieval_flow.lower():
         raise Exception(f"An error occured while running 'retrieval_flow'")

@@ -2769,6 +2769,8 @@ Scenario of user requiring a full SEO report on a website using its main page
 - add a node to manage the retrieved answer to use tools to search about it or to fetched the answer from it and build a response.
 - a logic with a new funciton that going to use the same funciton as the one query_matching that will check if the document exist in our db if yes if does a query matching and jumps directly to he retrieval graph , if not it is going to use the normal route process.
 - add langfuse
+- test the last graph alone to see how report look like
+- try to test workflow from retrieval graph to report graph only by isolating those and commenting the other graphs
 
 
 

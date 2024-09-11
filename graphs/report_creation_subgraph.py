@@ -70,21 +70,20 @@ def beautify_output(data):
 def internet_search_agent(state: MessagesState):
     messages = state['messages']
     print("message state -1: ", messages[-1].content, "\nmessages state -2: ", messages[-2].content)
-    # print("messages from call_model func: ", messages)
-    response = llm_with_internet_search_tool.invoke(messages[-1].content)
-    if ("success_hash" or "success_semantic" or "success_vector_retrieved_and_cached") in messages[-1].content:
-      print(f"\nAnswer retrieved, create schema for tool choice of llm, last message: {messages[-1].content}")
-      response = llm_with_internet_search_tool.invoke(f"to the query {messages[-2].content} we found response in organization internal documents with content and source id: {messages[-1].content}. Analyze thouroughly the answer retrieved. Correlate the question to the answer retrieved. Find extra information by making an internet search about the content retrieved to answer the question the best.")
-    # print("response from should_continue func: ", response)
-    # We return a list, because this will get added to the existing list
+    rephrased_query = messages[-1].content
+    retrieved_answers = messages[-2].content.retrived_answers # List[str]
+    response = llm_with_internet_search_tool.invoke(f"to the query {rephrased_query} We found answers that are in this list: {retrieved_answers}. Analyze the answers retrieved thouroughly. Correlate the question to the answer retrieved if any correlation exist and that we can say that some answers are relevant. Find extra information by making an internet search about the relevant content retrieved or just to answer to the question the best.")
     return {"messages": [response]}
 
 # to fetch query reformulated froms state
 def fetch_answer_and_query_reformulated(state: MessagesState):
   messages = state['messages']
   response_from_previous_graph = messages[-1].content # make sure that the passed in content is a json str, next node will use json.loads to have it as dict and fetch what needed
+  retrieved_answers_list = []
+  for elem in json.loads(response_from_previous_graph):
+    retrieved_answers_list.append(elem.content)
   reformulated_initial_question = os.getenv("QUERY_REFORMULATED")
-  return {"messages": [{"role": "ai", "content": response_from_previous_graph}, {"role": "ai", "content": reformulated_initial_question}]}
+  return {"messages": [{"role": "ai", "content": json.dumps({"retrieved_answers": retrieved_answers_list})}, {"role": "ai", "content": reformulated_initial_question}]}
 
 
 def answer_user_with_report(state: MessagesState):
@@ -92,14 +91,6 @@ def answer_user_with_report(state: MessagesState):
     See if we can use here our structured output in order to have the report the way we want it to be or we can use the previous llm agent nodes to have this structured output
   """
   messages = state['messages']
-  last_message = message[-1].content # make this last message be the report that we get form the llm agent
-  
-  # create the report
-  report_path = os.getenv("REPORT_PATH")
-  with open(report_path, "w", encoding="utf-8") as report:
-    report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
-    report.write(last_message)
-
   # this is just to check the history of messages -1, -2 and -3
   print("Answer User With Report State Messages: ", "\nMessage[-3]: ", messages[-3], "\nMessage[-2]: ", messages[-2], "\nMessage[-1]: ", messages[-1],)
 
@@ -108,23 +99,47 @@ def answer_user_with_report(state: MessagesState):
     # we try this when no tool has been used using prompting technique to request a report from llm
     try:
       last_message = messages[-1].content
-      response = groq_llm_mixtral_7b.invoke("I need a detailed report about. Put your report answer between markdown tags ```markdown ```: {last_message}")
+      response = groq_llm_mixtral_7b.invoke("I need a detailed report about, {last_message}. Format the report in markdown using title, parapgraphs, subtitles, bullet points and advice section to get a fully complete professional report. Put your report answer between markdown tags ```markdown ```.")
       formatted_answer = response.content.split("```")[1].strip("markdown").strip()
+      # save reuslt to .var env file
+      set_key(".vars.env", "REPORT_GRAPH_RESULT", f"success:{formatted_answer}")
+      load_dotenv(dotenv_path=".vars.env", override=True)
+      # create the report
+      report_path = os.getenv("REPORT_PATH")
+      with open(report_path, "w", encoding="utf-8") as report:
+        report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
+        report.write(last_message)
+      return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
     except IndexError as e:
-      formatted_answer = response.content
-      print(f"We found an error. answer returned by llm withotu markdown tags: {e}")
-    return {"messages": [{"role": "ai", "content": formatted_answer}]}
+      formatted_answer = f" {e}: {response.content}"
+      print(f"We found an error. answer returned by llm without markdown tags: {e}")
+      # save reuslt to .var env file
+      set_key(".vars.env", "REPORT_GRAPH_RESULT", f"error:{formatted_answer}")
+      load_dotenv(dotenv_path=".vars.env", override=True)
+      return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
+
 
   # otherwise we return -1 message as it is the tool answer and tool has been used
   try:
     last_message = messages[-2].content
-    response = groq_llm_mixtral_7b.invoke("I need a detailed report about. Put your report answer between markdown tags ```markdown ```: {last_message}")
+    response = groq_llm_mixtral_7b.invoke("I need a detailed report about, {last_message}. Format the report in markdown using title, parapgraphs, subtitles, bullet points and advice section to get a fully complete professional report. Put your report answer between markdown tags ```markdown ```.")
     formatted_answer = response.content.split("```")[1].strip("markdown").strip()
+    # save reuslt to .var env file
+    set_key(".vars.env", "REPORT_GRAPH_RESULT", f"success:{formatted_answer}")
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    # create the report
+    report_path = os.getenv("REPORT_PATH")
+    with open(report_path, "w", encoding="utf-8") as report:
+      report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
+      report.write(last_message)
+    return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
   except IndexError as e:
     formatted_answer = response.content
-    print(f"We found an error. answer returned by llm withotu markdown tags: {e}")
-
-  return {"messages": [{"role": "ai", "content": formatted_answer}]}
+    print(f"We found an error. answer returned by llm without markdown tags: {e}")
+    # save reuslt to .var env file
+    set_key(".vars.env", "REPORT_GRAPH_RESULT", f"error:{formatted_answer}")
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
 
 
 # CONDITIONAL EDGES FUNCTIONS
@@ -164,8 +179,8 @@ workflow.add_node("tool_search_node", tool_search_node)
 workflow.add_node("answer_with_report", answer_user_with_report)
 
 # edges
-workflow.set_entry_point("fetch_query_reformulated")
-workflow.add_edge("fetch_query_reformulated", "internet_search_agent")
+workflow.set_entry_point("fetch_answer_and_query_reformulated")
+workflow.add_edge("fetch_answer_and_query_reformulated", "internet_search_agent")
 # tool nodes
 workflow.add_edge("internet_search_agent", "tool_search_node")
 workflow.add_edge("tool_search_node", "answer_with_report")
@@ -197,7 +212,7 @@ def report_creation_subgraph(retrieval_result):
   print("Retrieval Graph")
   count = 0
   for step in graph_report_creation.stream(
-    {"messages": [SystemMessage(content=user_query)]},
+    {"messages": [SystemMessage(content=retrieval_result)]},
     config={"configurable": {"thread_id": int(os.getenv("THREAD_ID"))}}):
     count += 1
     if "messages" in step:

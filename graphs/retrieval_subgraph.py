@@ -105,7 +105,7 @@ def answer_user_with_report(state: MessagesState):
   if messages[-2].tool_calls == []:
     try:
       last_message = messages[-1].content
-      response = groq_llm_mixtral_7b.invoke("I need a detailed report about. Put your report answer between markdown tags ```markdown ```: {last_message}")
+      response = groq_llm_mixtral_7b.invoke(f"I need a detailed report about {os.getenv('QUERY_REFORMULATED')} in markdown with title, pertinent answers and well formatted with bullet points. Put your report answer between markdown tags ```markdown ```: {last_message}")
       formatted_answer = response.content.split("```")[1].strip("markdown").strip()
     except IndexError as e:
       formatted_answer = response.content
@@ -114,7 +114,7 @@ def answer_user_with_report(state: MessagesState):
   # otherwise we return -1 message as it is the tool answer
   try:
     last_message = messages[-2].content
-    response = groq_llm_mixtral_7b.invoke("I need a detailed report about. Put your report answer between markdown tags ```markdown ```: {last_message}")
+    response = groq_llm_mixtral_7b.invoke(f"I need a detailed report about {os.getenv('QUERY_REFORMULATED')} in markdown with title, pertinent answers and well formatted with bullet points. Put your report answer between markdown tags ```markdown ```: {last_message}")
     formatted_answer = response.content.split("```")[1].strip("markdown").strip()
   except IndexError as e:
     formatted_answer = response.content
@@ -287,9 +287,9 @@ def retrieval_subgraph(user_query):
   with open("retrieval_subgraph.png", "wb") as f:
     f.write(graph_image)
 
-  if "success" in os.getenv("EMBEDDING_GRAPH_RESULT"):
+  if "success" in os.getenv("RETRIEVAL_GRAPH_RESULT"):
     # tell to start `retrieval` graph
-    return "retrieval"
+    return "report"
   return "error"
 
 '''
