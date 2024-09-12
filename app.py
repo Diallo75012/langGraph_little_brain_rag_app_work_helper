@@ -25,6 +25,13 @@ from llms.llms import (
   groq_llm_llama3_70b_tool_use,
   groq_llm_gemma_7b,
 )
+# structured output
+from structured_output.structured_output import (
+  # class created to structure the output
+  ReportAnswerCreationClass,
+  # function taking in class output structured and the query, returns dict
+  structured_output_for_agent
+)
 # for env. vars
 from dotenv import load_dotenv
 
@@ -122,8 +129,8 @@ if __name__ == "__main__":
     try:
       retrieval_graph_result = retrieval_graph_result.split(":")[-1].strip()
       report_creation_flow = report_creation_subgraph(retrieval_graph_result)
-      if "error" in retrieval_flow.lower():
-        raise Exception(f"An error occured while running 'retrieval_flow'")
+      if "error" in report_creation_flow.lower():
+        raise Exception(f"An error occured while running 'retrieval_flow': {report_creation_flow.lower()}")
     except Exception as e:
       raise Exception(f"An error occured while running 'retrieval_flow': {e}")
   elif "report" in retrieval_graph_result:

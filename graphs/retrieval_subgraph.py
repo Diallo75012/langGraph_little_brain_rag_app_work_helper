@@ -13,6 +13,13 @@ from llms.llms import (
   groq_llm_llama3_70b_tool_use,
   groq_llm_gemma_7b,
 )
+# structured output
+from structured_output.structured_output import (
+  # class created to structure the output
+  ReportAnswerCreationClass,
+  # function taking in class output structured and the query, returns dict
+  structured_output_for_agent
+)
 # LLM chat call AI, System, Human
 from langchain_core.messages import (
   AIMessage,
@@ -96,7 +103,7 @@ def fetch_query_reformulated(state: MessagesState):
   last_message = messages[-1].content
   return {"messages": [{"role": "ai", "content": last_message}]}
 
-
+'''
 def answer_user_with_report(state: MessagesState):
   messages = state['messages']
   print("Answer User With Report State Messages: \n", "Message[-3]: ", messages[-3], "Message[-2]: ", messages[-2], "Message[-1]: ", messages[-1],)
@@ -121,20 +128,54 @@ def answer_user_with_report(state: MessagesState):
     print(f"We found an error. answer returned by llm without markdown tags: {e}")
   #formatted_answer_structured_output = response
   return {"messages": [{"role": "ai", "content": f"success:{str(formatted_answer)}"}]}
+'''
+def answer_user_with_report(state: MessagesState):
 
-# write report to file that is going to be read by the app and returned to user
-def write_report_to_file(state: MessagesState):
   messages = state['messages']
-  last_message = messages[-1].content
-  report_path = os.getenv("REPORT_PATH")
-  with open(report_path, "w", encoding="utf-8") as report:
-    report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
-    report.write(last_message)
-  # save reuslt to .var env file for app business logic to know that next graph don't need to be started as report has been created
-  set_key(".vars.env", "RETRIEVAL_GRAPH_RESULT", f"report:{report_path}")
-  load_dotenv(dotenv_path=".vars.env", override=True)
+    
+  try:
+    if "tool_calls" in messages[-2].additional_kwargs and messages[-2].additional_kwargs["tool_calls"] != []:
+      print("TOOL HAS BEEN CALLED: adding the internet search result in the query for report.")
+      internet_search_result = messages[-1].content
+      query = f"question: {os.getenv('QUERY_REFORMULATED')}. Extra information from internet: {internet_search_result}"    
+    else:
+      print("TOOL HASN'T BEEN CALLED: No internet search in the query.")
+      query = f"question: {os.getenv('QUERY_REFORMULATED')}."
+    
+    # get the answer as we want it using structured output
+    answer = structured_output_for_agent(ReportAnswerCreationClass, query, structured_outpout_report_prompt["system"]["template"])
+    print("\n\n\nANSWER: ", answer, type(answer))
+    """
+      # Object returned by the structured output llm call
+      { 
+        "TITLE": response.title)
+        "ADVICE": response.advice)
+        "ANSWER": response.answer)
+        "BULLET POINTS": response.bullet_points)
+      }
+    """
+    
+    # create the report
+    report_path = os.getenv("REPORT_PATH")
+    with open(report_path, "w", encoding="utf-8") as report:
+      report.write(f"# Creditizens Answer\n\n")
+      report.write(f"{answer['TITLE']}\n") 
+      report.write(f"{answer['ADVICE']}\n")
+      report.write(f"{answer['ANSWER']}\n")
+      report.write(f"{answer['BULLET_POINTS']}")
 
-  return {"messages": [{"role": "ai", "content": f"report saved to file: {report_path}"}]}
+    # save reuslt to .var env file for app business logic to know that next graph don't need to be started as report has been created
+    set_key(".vars.env", "RETRIEVAL_GRAPH_RESULT", f"report:{report_path}")
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    
+    return {"messages": [{"role": "ai", "content": json.dumps(answer)}]}
+
+  except Exception as e:
+    print(f"We found an error with the structured output llm call: {e}")
+    # save reuslt to .var env file
+    set_key(".vars.env", "REPORT_GRAPH_RESULT", f"error:{e}")
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    return {"messages": [{"role": "ai", "content": f"error:{e}"}]}
 
 # answer_user Node function to be  adapted to this graph
 def answer_user(state: MessagesState):
@@ -225,7 +266,6 @@ workflow.add_node("internet_search_agent", internet_search_agent)
 workflow.add_node("tool_search_node", tool_search_node)
 # answer
 workflow.add_node("answer_with_report", answer_user_with_report)
-workflow.add_node("write_report_to_file", write_report_to_file)
 workflow.add_node("answer_user", answer_user)
 # errors
 workflow.add_node("error_handler", error_handler)
@@ -291,7 +331,11 @@ def retrieval_subgraph(user_query):
   if "success" in os.getenv("RETRIEVAL_GRAPH_RESULT"):
     # tell to start `retrieval` graph
     return "report"
-  return "error"
+  elif "report" in os.getenv("RETRIEVAL_GRAPH_RESULT"):
+    # tell to start `retrieval` graph
+    return "report"
+  else:
+    return "error"
 
 '''
 # can use this to test this graph as a standalone

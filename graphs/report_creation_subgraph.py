@@ -13,6 +13,14 @@ from llms.llms import (
   groq_llm_llama3_70b_tool_use,
   groq_llm_gemma_7b,
 )
+# structured output
+from structured_output.structured_output import (
+  # class created to structure the output
+  ReportAnswerCreationClass,
+  # function taking in class output structured and the query, returns dict
+  structured_output_for_agent
+)
+from prompts.prompts import structured_outpout_report_prompt
 # LLM chat call AI, System, Human
 from langchain_core.messages import (
   AIMessage,
@@ -86,87 +94,50 @@ def fetch_answer_and_query_reformulated(state: MessagesState):
 
 
 def answer_user_with_report(state: MessagesState):
-  """
-    See if we can use here our structured output in order to have the report the way we want it to be or we can use the previous llm agent nodes to have this structured output
-  """
+
   messages = state['messages']
-  # this is just to check the history of messages -1, -2 and -3
-  print("Answer User With Report State Messages: ", "\nMessage[-3]: ", messages[-3], "\nMessage[-2]: ", messages[-2], "\nMessage[-1]: ", messages[-1],)
-
-  # check if tool have been called or not. if it haven't been called the -2 will be the final answer else we keep it the same -1 is the final answer
-  if "tool_calls" in messages[-2].additional_kwargs and messages[-2].additional_kwargs["tool_calls"] == []:
-    print("Tool not called: (messages[-2].additional_kwargs['tool_calls'])   ", messages[-2].additional_kwargs["tool_calls"])
-    # we try this when no tool has been used using prompting technique to request a report from llm
-    try:
-      last_message = messages[-1].content
-      print("LLM CALLED LAST MESSAGE: ", last_message)
-      response = groq_llm_mixtral_7b.invoke("I need a detailed report about, {last_message}. Format the report in markdown using title, parapgraphs, subtitles, bullet points and advice section to get a fully complete professional report. Put your report answer between markdown tags ```markdown ```.")
-      formatted_answer = response.content.split("```")[1].strip("markdown").strip()
-      # save reuslt to .var env file
-      set_key(".vars.env", "REPORT_GRAPH_RESULT", f"success:{formatted_answer}")
-      load_dotenv(dotenv_path=".vars.env", override=True)
-      # create the report
-      report_path = os.getenv("REPORT_PATH")
-      with open(report_path, "w", encoding="utf-8") as report:
-        report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
-        report.write(last_message)
-      return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
-    except IndexError as e:
-      formatted_answer = f" {e}: {response.content}"
-      print(f"We found an error. answer returned by llm without markdown tags: {e}")
-      # save reuslt to .var env file
-      set_key(".vars.env", "REPORT_GRAPH_RESULT", f"error:{e}")
-      load_dotenv(dotenv_path=".vars.env", override=True)
-      return {"messages": [{"role": "ai", "content": f"error:{e}"}]}
-
-
-  # otherwise we return -1 message as it is the tool answer and tool has been used
+    
   try:
-    print("Tool called!: (messages[-2].additional_kwargs['tool_calls'])   ", messages[-2].additional_kwargs["tool_calls"])
-    last_message = messages[-2].content
-    response = groq_llm_mixtral_7b.invoke("I need a detailed report about, {last_message}. Format the report in markdown using title, parapgraphs, subtitles, bullet points and advice section to get a fully complete professional report. Put your report answer between markdown tags ```markdown ```.")
-    formatted_answer = response.content.split("```")[1].strip("markdown").strip()
-    # save reuslt to .var env file
-    set_key(".vars.env", "REPORT_GRAPH_RESULT", f"success:{formatted_answer}")
+    if "tool_calls" in messages[-2].additional_kwargs and messages[-2].additional_kwargs["tool_calls"] != []:
+      print("TOOL HAS BEEN CALLED: adding the internet search result in the query for report.")
+      internet_search_result = messages[-1].content
+      query = f"question: {os.getenv('QUERY_REFORMULATED')}. Retrieved answer form our documentation: {os.getenv('RETRIEVAL_GRAPH_RESULT').split('success:')[1]}. Extra information from internet: {internet_search_result}"    
+    else:
+      print("TOOL HASN'T BEEN CALLED: No internet search in the query.")
+      query = f"question: {os.getenv('QUERY_REFORMULATED')}. Retrieved answer form our documentation: {os.getenv('RETRIEVAL_GRAPH_RESULT').split('success:')[1]}."
+    
+    # get the answer as we want it using structured output
+    answer = structured_output_for_agent(ReportAnswerCreationClass, query, structured_outpout_report_prompt["system"]["template"])
+    print("\n\n\nANSWER: ", answer, type(answer))
+    """
+      # Object returned by the structured output llm call
+      { 
+        "TITLE": response.title)
+        "ADVICE": response.advice)
+        "ANSWER": response.answer)
+        "BULLET POINTS": response.bullet_points)
+      }
+    """
+    # save result to .var env file
+    set_key(".vars.env", "REPORT_GRAPH_RESULT", f"success:{answer}")
     load_dotenv(dotenv_path=".vars.env", override=True)
+    
     # create the report
     report_path = os.getenv("REPORT_PATH")
     with open(report_path, "w", encoding="utf-8") as report:
-      report.write(f"# Question: `{os.getenv('QUERY_REFORMULATED')}`\n\n")
-      report.write(last_message)
-    return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
-  except IndexError as e:
-    formatted_answer = response.content
-    print(f"We found an error. answer returned by llm without markdown tags: {e}")
+      report.write(f"# Creditizens Answer\n\n")
+      report.write(f"{answer['TITLE']}\n") 
+      report.write(f"{answer['ADVICE']}\n")
+      report.write(f"{answer['ANSWER']}\n")
+      report.write(f"{answer['BULLET_POINTS']}")
+    return {"messages": [{"role": "ai", "content": json.dumps(answer)}]}
+
+  except Exception as e:
+    print(f"We found an error with the structured output llm call: {e}")
     # save reuslt to .var env file
     set_key(".vars.env", "REPORT_GRAPH_RESULT", f"error:{e}")
     load_dotenv(dotenv_path=".vars.env", override=True)
     return {"messages": [{"role": "ai", "content": f"error:{e}"}]}
-
-
-# CONDITIONAL EDGES FUNCTIONS
-
-'''
-# reference to be used for last report message
-def answer_user_with_report_from_retrieved_data(state: MessagesState):
-  messages = state['messages']
-  #print("Message state: ", messages)
-  # # -4 user input, -3 data retrieved, -2 schema internet tool, -1 internet search result
-  internet_search_result = messages[-1].content
-  info_data_retrieved = messages[-3].content
-  question = messages[-4].content
-  prompt = answer_user_with_report_from_retrieved_data_prompt["human"]["template"]
-  prompt_human_with_input_vars_filled = eval(f'f"""{prompt}"""')
-  print(f"\nprompt_human_with_input_vars_filled: {prompt_human_with_input_vars_filled}\n")
-  system_message = SystemMessage(content=prompt_human_with_input_vars_filled)
-  human_message = HumanMessage(content=prompt_human_with_input_vars_filled)
-  messages = [system_message, human_message]
-  response = groq_llm_mixtral_7b.invoke(messages)
-  #formatted_answer = response.content.split("```")[1].strip("markdown").strip()
-
-  # couldn't get llm to answer in markdown tags???? so just getting content saved to states
-  return {"messages": [{"role": "ai", "content": response.content}]}
-'''
 
 
 # Initialize states
