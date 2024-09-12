@@ -2328,7 +2328,7 @@ parser = PydanticOutputParser(pydantic_object=CreateBulletPoints)
 prompt = PromptTemplate(
     template="Answer the user query.\n{format_instructions}\n{query}\n",
     input_variables=["query"],
-    partial_variables={"format33333333_instructions": parser.get_format_instructions()},
+    partial_variables={"format_instructions": parser.get_format_instructions()},
 )
 
 # And a query intended to prompt a language model to populate the data structure.
@@ -2752,13 +2752,28 @@ print("MONACO: \n", make_normal_or_chat_prompt_chain_call(groq_llm_llama3_8b, {}
 
 
 
-
-
 # Next
 - fix redis that doesn't save anything as value for key. find in the code where is the issue - OK for the moment works fine - OK
 - adapt all functions to the new graph as those are exported to their to make the graph run, but not yet fixed. - OK
 - tranfer all `test.py` function/graph/etc/... to get our initial graph to `app.py` - OK
 - create all variables that can be put in .env file and create a .env file special for app vars so that we update only that .env file - OK
+
+
+# returned values fromt he answer_user_report function, to see what are the values of the previous messages
+- Message[-3]:  
+```bash
+content='What are the different types of thermoceptors?' id='e927aa47-337b-40a6-8494-450b9cf80072' 
+```
+- Message[-2]:
+```bash
+content='' additional_kwargs={'tool_calls': [{'id': 'call_98bp', 'function': {'arguments': '{"query":"different types of thermoceptors"}', 'name': 'search'}, 'type': 'function'}]} response_metadata={'token_usage': {'completion_tokens': 94, 'prompt_tokens': 12332, 'total_tokens': 12426, 'completion_time': 0.152341942, 'prompt_time': 0.610758584, 'queue_time': 0.0022357619999999745, 'total_time': 0.763100526}, 'model_name': 'mixtral-8x7b-32768', 'system_fingerprint': 'fp_c5f20b5bb1', 'finish_reason': 'tool_calls', 'logprobs': None} id='run-769b9abf-e2f5-411b-b3cb-f1b78966b786-0' tool_calls=[{'name': 'search', 'args': {'query': 'different types of thermoceptors'}, 'id': 'call_98bp', 'type': 'tool_call'}] usage_metadata={'input_tokens': 12332, 'output_tokens': 94, 'total_tokens': 12426}
+```
+- Message[-1]:
+```bash
+content='{"messages": ["Different types of stimuli are sensed by different types of receptors. ... Thermoreceptors are free nerve endings which respond to changes in temperature and are primarily located in skin and mucous membranes. Thermoreceptors responding to innocuous (nonharmful) warm signals are found on dendritic branches of unmyelinated fibers and respond to ... The somatosensory system also includes receptors and neurons that convey information about body position and movement to the brain. These proprioceptors are housed in muscle, bone, and tendons and respond to stretch and contraction, tension and release. Examples of different types of receptors located under our skin. Knowing what type of stimulus occurred will depend on which type of receptor was stimulated and what region of the ________ receives the impulses coming from sensory receptors. a. brain stem. b. cerebellum. c. cerebral cortex. c. cerebral cortex. Visceral pain may feel as if it comes from some part of the body other than the part being stimulated. The different types of functional receptor cell types are mechanoreceptors, photoreceptors, chemoreceptors (osmoreceptor), thermoreceptors, electroreceptors (in certain mammals and fish), and nociceptors. Physical stimuli, such as pressure and vibration, as well as the sensation of sound and body position (balance), are interpreted through a ... Thermoreceptors are free nerve endings (FNE), which extend until the mid-epidermis, or the outermost layer of our skin. ... If you want to learn more about different types of receptors that signal ..."]}' name='search' id='94b381cf-0ae4-4857-817f-e9d1b831a586' tool_call_id='call_98bp'
+Tool called!: (messages[-2].additional_kwargs['tool_calls'])    [{'id': 'call_98bp', 'function': {'arguments': '{"query":"different types of thermoceptors"}', 'name': 'search'}, 'type': 'function'}]
+```
+
 
 # scenario
 Scenario of user requiring a full SEO report on a website using its main page

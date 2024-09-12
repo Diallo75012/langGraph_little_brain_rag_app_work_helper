@@ -102,7 +102,7 @@ def answer_user_with_report(state: MessagesState):
   print("Answer User With Report State Messages: \n", "Message[-3]: ", messages[-3], "Message[-2]: ", messages[-2], "Message[-1]: ", messages[-1],)
 
   # check if tool have been called or not. if it haven't been called the -2 will be the final answer else we keep it the same -1 is the final answer
-  if messages[-2].tool_calls == []:
+  if "tool_calls" in messages[-2].additional_kwargs and messages[-2].additional_kwargs["tool_calls"] == []:
     try:
       last_message = messages[-1].content
       response = groq_llm_mixtral_7b.invoke(f"I need a detailed report about {os.getenv('QUERY_REFORMULATED')} in markdown with title, pertinent answers and well formatted with bullet points. Put your report answer between markdown tags ```markdown ```: {last_message}")
@@ -110,7 +110,7 @@ def answer_user_with_report(state: MessagesState):
     except IndexError as e:
       formatted_answer = response.content
       print(f"We found an error. answer returned by llm withotu markdown tags: {e}")
-    return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
+    return {"messages": [{"role": "ai", "content": f"success:{str(formatted_answer)}"}]}
   # otherwise we return -1 message as it is the tool answer
   try:
     last_message = messages[-2].content
@@ -120,7 +120,7 @@ def answer_user_with_report(state: MessagesState):
     formatted_answer = response.content
     print(f"We found an error. answer returned by llm without markdown tags: {e}")
   #formatted_answer_structured_output = response
-  return {"messages": [{"role": "ai", "content": str(formatted_answer)}]}
+  return {"messages": [{"role": "ai", "content": f"success:{str(formatted_answer)}"}]}
 
 # write report to file that is going to be read by the app and returned to user
 def write_report_to_file(state: MessagesState):
@@ -141,7 +141,7 @@ def answer_user(state: MessagesState):
   messages = state['messages']  
   # we need to have this ai content message be a string otherwise we will get a pydantic validation error expecting a str after we could deserialize this using `json.laods`
   last_message = json.dumps({"first_graph_message": messages[0].content, "second_graph_message": messages[1].content, "last_graph_message": messages[-1].content})
-
+  print("LAST MESSAGE SET OF RETRIEVAL GRAPH (indexes[first graph messages 0, second graph message 1,last message -1]): ", last_message)
   # save reuslt to .var env file
   set_key(".vars.env", "RETRIEVAL_GRAPH_RESULT", f"success:{last_message}")
   load_dotenv(dotenv_path=".vars.env", override=True)
@@ -239,13 +239,14 @@ workflow.add_conditional_edges(
     handle_query_by_calling_cache_then_vectordb_if_fail_conditional_edge_decision,
     #"dataframe_from_query"
 )
-# tool nodes
+# tool nodes with report answer
 workflow.add_edge("internet_search_agent", "tool_search_node")
 workflow.add_edge("tool_search_node", "answer_with_report")
-# answer user
+workflow.add_edge("answer_with_report", END)
+# answer user to pass it to next graph which will make a report
 workflow.add_edge("error_handler", "answer_user")
 workflow.add_edge("answer_user", END)
-workflow.add_edge("answer_with_report", END)
+
 
 # compile with memory
 checkpointer = MemorySaver()
