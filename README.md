@@ -33,7 +33,7 @@ There is not extraction refining process implemented but would be amazing...
 - [x] create all mini tools
 - [x] finish the user query graph until data is embedded or user get response if nothing to embed, therefore, introduce the caching layer
 - [x] Find interesting storytelling for use case an interesting use case
-- [ ] Test last graph `report creation` and `retrieval` workflow by commenting out the rest and putting entry dummy values to see how the report comes out, we can create keys of hash of query to test retrieval also and returned report.
+- [x] Test last graph `report creation` and `retrieval` workflow by commenting out the rest and putting entry dummy values to see how the report comes out, we can create keys of hash of query to test retrieval also and returned report.
 Docs: [LangGraph Doc Workflow Example](https://langchain-ai.github.io/langgraph/tutorials/rag/langgraph_self_rag_local/)
 
 

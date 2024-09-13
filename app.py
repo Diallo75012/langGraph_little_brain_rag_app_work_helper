@@ -49,7 +49,7 @@ create_table_if_not_exists(os.getenv("TABLE_NAME"))
 
 if __name__ == "__main__":
   # I want to know if this documents docs/feel_temperature.pdf tells us what are the different types of thermoceptors?
-  '''  
+   
   custom_state = GraphStatePersistFlow()
   # get user query
   user_query =  input("Do you need any help? any PDF doc or webpage to analyze? ").strip()
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     except Exception as e:
       raise Exception("An error occured while running 'embedding_flow': {e}")
 
-  '''
+
 
   embedding_graph_result = os.getenv("EMBEDDING_GRAPH_RESULT")
   print("2: ", embedding_graph_result)
@@ -102,10 +102,11 @@ if __name__ == "__main__":
   # retrieval graph
   """
   just for the test embedding_flow = "retrieval" don't forget to get rid of it when it works fine
-  """
   embedding_flow = "retrieval"
+  """
+
   if embedding_flow == "retrieval" and "success" in embedding_graph_result:
-    print("Starting Retrieval and Report Creation")
+    print("Starting Retrieval")
     try:
       retrieval_flow = retrieval_subgraph(reformulated_query)
       if "error" in retrieval_flow.lower():
@@ -125,7 +126,7 @@ if __name__ == "__main__":
 
   # report creation graph
   if retrieval_flow == "report" and "success" in retrieval_graph_result:
-    print("Starting Retrieval and Report Creation")
+    print("Starting Report Creation")
     try:
       retrieval_graph_result = retrieval_graph_result.split(":")[-1].strip()
       report_creation_flow = report_creation_subgraph(retrieval_graph_result)

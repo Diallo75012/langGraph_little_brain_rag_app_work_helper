@@ -182,7 +182,7 @@ print("Final Message:", final_message)
 # we can maybe get the uder input first and then inject it as first message of the state: `{"messages": [HumanMessage(content=user_input)]}`
 
 def report_creation_subgraph(retrieval_result):
-  print("Retrieval Graph")
+  print("Report Graph")
   count = 0
   for step in graph_report_creation.stream(
     {"messages": [SystemMessage(content=retrieval_result)]},

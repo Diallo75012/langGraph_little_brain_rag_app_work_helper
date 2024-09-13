@@ -181,7 +181,7 @@ def answer_user_with_report(state: MessagesState):
 def answer_user(state: MessagesState):
   messages = state['messages']  
   # we need to have this ai content message be a string otherwise we will get a pydantic validation error expecting a str after we could deserialize this using `json.laods`
-  last_message = json.dumps({"first_graph_message": messages[0].content, "second_graph_message": messages[1].content, "last_graph_message": messages[-1].content})
+  last_message = json.dumps({"first_graph_message": messages[0].content, "last_graph_message": messages[-1].content})
   print("LAST MESSAGE SET OF RETRIEVAL GRAPH (indexes[first graph messages 0, second graph message 1,last message -1]): ", last_message)
   # save reuslt to .var env file
   set_key(".vars.env", "RETRIEVAL_GRAPH_RESULT", f"success:{last_message}")
@@ -308,6 +308,9 @@ print("Final Message:", final_message)
 
 # using STREAM
 # we can maybe get the uder input first and then inject it as first message of the state: `{"messages": [HumanMessage(content=user_input)]}`
+
+# test_query for pdf: What is responsible for detecting temperature changes in our skin?
+# answer expected" Specialized nerve endings called thermoreceptors are responsible for detecting temperature changes in our skin?
 
 def retrieval_subgraph(user_query):
   print("Retrieval Graph")
