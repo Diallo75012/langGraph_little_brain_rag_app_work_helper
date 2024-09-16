@@ -231,7 +231,8 @@ workflow.add_edge("generate", END) # OR generate, then END
 --- START --- Retrieve --- Grade_documents (uses decide_to_generate func output to decide where to go after) --- output = search --- Web_search --- Generate --- END
                                                                                                              --- output = generate --- Generate --- END
 #### Diagram
-[Diagram Link:](https://excalidraw.com/#json=Id5LJIJ2GnPsu3Fk6E1Nr,39wVy9-u6aX7PJY-YRPirw)
+- First version: End[Diagram Link:](https://excalidraw.com/#json=Id5LJIJ2GnPsu3Fk6E1Nr,39wVy9-u6aX7PJY-YRPirw)
+- Second version: [Diagram Link:](https://excalidraw.com/#json=W5qMMT6topHNXtdcVMrcp,B8MDvIeeI5XxW-8JjFZeNg)
 
 [---------------------------------------------------------]
 
