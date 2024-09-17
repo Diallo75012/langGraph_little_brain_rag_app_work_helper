@@ -7,10 +7,17 @@ from langchain_core.messages import (
   SystemMessage,
   ToolMessage
 )
+# structured output
+from structured_output.structured_output import (
+  # class created to structure the output
+  ReportAnswerCreationClass,
+  # function taking in class output structured and the query, returns dict
+  structured_output_for_agent
+)
+from prompts.prompts import structured_outpout_report_prompt
 from typing import Dict, List, Any, Optional, Union
 # Prompts LAngchain and Custom
 from langchain_core.prompts import PromptTemplate
-from prompts.prompts import answer_user_with_report_from_retrieved_data_prompt
 # Node Functions from App.py 
 """
 Maybe will have to move those functions OR to a file having all node functions OR to the corresponding graph directly
@@ -155,6 +162,55 @@ def dataframe_from_query_conditional_edge_decision(state: MessagesState):
       conditional.write(f"- returned: 'error'\n\n")
     return "error_handler"
 
+
+def answer_user_with_report(state: MessagesState):
+
+  messages = state['messages']
+
+  try:
+    if "tool_calls" in messages[-2].additional_kwargs and messages[-2].additional_kwargs["tool_calls"] != []:
+      print("TOOL HAS BEEN CALLED: adding the internet search result in the query for report.")
+      internet_search_result = messages[-1].content
+      query = f"question: {os.getenv('QUERY_REFORMULATED')}. Extra information from internet: {internet_search_result}"    
+    else:
+      print("TOOL HASN'T BEEN CALLED: No internet search in the query.")
+      query = f"question: {os.getenv('QUERY_REFORMULATED')}."
+    
+    # get the answer as we want it using structured output
+    answer = structured_output_for_agent(ReportAnswerCreationClass, query, structured_outpout_report_prompt["system"]["template"])
+    print("\n\n\nANSWER: ", answer, type(answer))
+    """
+      # Object returned by the structured output llm call
+      { 
+        "TITLE": response.title)
+        "ADVICE": response.advice)
+        "ANSWER": response.answer)
+        "BULLET POINTS": response.bullet_points)
+      }
+    """
+    
+    # create the report
+    report_path = os.getenv("REPORT_PATH")
+    with open(report_path, "w", encoding="utf-8") as report:
+      report.write(f"# Creditizens Answer\n\n")
+      report.write(f"{answer['TITLE']}\n") 
+      report.write(f"{answer['ADVICE']}\n")
+      report.write(f"{answer['ANSWER']}\n")
+      report.write(f"{answer['BULLET_POINTS']}")
+
+    # set to true the variables that tells to the application that no ducment where found in the query and to stop the application buy just displaying the report answer path
+    set_key(".vars.env", "PRIMARY_GRAPH_NO_DOCUMENTS_NOR_URL", "true")
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    
+    return {"messages": [{"role": "ai", "content": json.dumps(answer)}]}
+
+  except Exception as e:
+    print(f"We found an error with the structured output llm call: {e}")
+    # save reuslt to .var env file
+    set_key(".vars.env", "REPORT_GRAPH_RESULT", f"error:{e}")
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    return {"messages": [{"role": "ai", "content": f"error:{e}"}]}
+
 # Initialize states
 workflow = StateGraph(MessagesState)
 
@@ -165,7 +221,8 @@ workflow.add_node("dataframe_from_query", process_query)
 workflow.add_node("internet_search_agent", internet_search_agent)
 workflow.add_node("tool_search_node", tool_search_node)
 workflow.add_node("inter_graph_node", inter_graph_node) # function to be created
-workflow.add_node("answer_user", final_answer_user)
+workflow.add_node("answer_user", final_answer_user) # onlu for error route
+workflow.add_node("answer_with_report", answer_user_with_report)
 
 # edges
 workflow.set_entry_point("get_user_input")
@@ -179,8 +236,8 @@ workflow.add_conditional_edges(
 workflow.add_edge("internet_search_agent", "tool_search_node")
 # answer user
 workflow.add_edge("error_handler", "answer_user")
-workflow.add_edge("tool_search_node", "answer_user")
-workflow.add_edge("answer_user", END)
+workflow.add_edge("tool_search_node", "answer_with_report")
+workflow.add_edge("answer_with_report", END)
 workflow.add_edge("inter_graph_node", END)
 
 # compile
@@ -224,14 +281,19 @@ def primary_graph(user_query):
       print(f"Step {count}: {output}")
   
   # subgraph drawing
-  graph_image = user_query_processing_stage.get_graph().draw_png()
+  graph_image = user_query_processing_stage.get_graph(xray=True).draw_mermaid_png()
   with open("primary_subgraph.png", "wb") as f:
     f.write(graph_image)
-
-  if ".parquet" in os.getenv("PARQUET_FILE_PATH"):
-    # tell to start `embeddings` graph
-    return "embeddings"
-  return "error"
+  
+  if os.getenv("PARQUET_FILE_PATH"):
+    if ".parquet" in os.getenv("PARQUET_FILE_PATH"):
+      # tell to start `embeddings` graph
+      return "embeddings"
+    return "error"
+  elif "true" in os.getenv("PRIMARY_GRAPH_NO_DOCUMENTS_NOR_URL"):
+    return "done"
+  else:
+    return "error"
 
 '''
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
 # helpers modules
 from lib_helpers.query_matching import handle_query_by_calling_cache_then_vectordb_if_fail
-from prompts.prompts import answer_user_with_report_from_retrieved_data_prompt
+from prompts.prompts import structured_outpout_report_prompt
 # display drawing of graph
 from IPython.display import Image, display
 # env vars

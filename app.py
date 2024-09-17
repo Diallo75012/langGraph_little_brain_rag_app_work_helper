@@ -51,6 +51,8 @@ if __name__ == "__main__":
   # I want to know if this documents docs/feel_temperature.pdf tells us what are the different types of thermoceptors?
    
   custom_state = GraphStatePersistFlow()
+  embedding_flow = ""
+  retrieval_flow = ""
   # get user query
   user_query =  input("Do you need any help? any PDF doc or webpage to analyze? ").strip()
   # save query to sdtate
@@ -68,6 +70,11 @@ if __name__ == "__main__":
       raise Exception(f"An error occured while running 'primary_flow'")
   except Exception as e:
     raise Exception(f"An error occured while running 'primary_flow': {e}")
+
+  # catch here the answer directly and stop the graph if no documents have been provided and returnt the path of the report path where the answer will be stored
+  if os.getenv("PRIMARY_GRAPH_NO_DOCUMENTS_NOR_URL") == "true" and primary_flow == "done":
+    print(f"No PDF or URL as been given. Please find the response at: {os.getenv('REPORT_PATH')}")
+  
 
   """
     EMBEDDINGS
@@ -134,11 +141,12 @@ if __name__ == "__main__":
         raise Exception(f"An error occured while running 'retrieval_flow': {report_creation_flow.lower()}")
     except Exception as e:
       raise Exception(f"An error occured while running 'retrieval_flow': {e}")
-  elif "report" in retrieval_graph_result:
-    report_path = retrieval_graph_result.split(":")[-1].strip()
-    with open(report_path, "r", encoding="utf-8") as report:
-      report_content = report.read()
-    print(f"Report content (markdown) present at {os.getenv('REPORT_PATH')}: \n", report_content)
+  elif retrieval_graph_result:
+    if "report" in retrieval_graph_result:
+      report_path = retrieval_graph_result.split(":")[-1].strip()
+      with open(report_path, "r", encoding="utf-8") as report:
+        report_content = report.read()
+      print(f"Report content (markdown) present at {os.getenv('REPORT_PATH')}: \n", report_content)
 
 
 
