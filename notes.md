@@ -2805,4 +2805,114 @@ query test:  What is responsible for detecting temperature changes in our skin? 
 - add langfuse
 
 
+# Plan for Agent Graph that executes code in docker sandbox `BRAINSTORMING`
+- two different agents in parallele that will write the script in markdown and we will use structure output the first way (pydantic) in order to have for sure the code and nothing else. Both agents will use different model so that we have the choice between two different codes.
+- on agent that will analyze both codes produces and will suggest best code without errors (Here we will infer that they is probably a better easy way to perform the task and that we have two codes to learn from and not do same mistakes, thena s to create a script) here also we need structured output
+- one agent that will make the requirements.txt for the code that will run in the docker sandbox for the code created
+- one agent that check the code execution log file to see if the code have been successfully executed (structured output here too)
+- one agent that need to check the desired code execution outcome and the log file or the folder where the output should be or .... and will tell if it has been successful or not (create custom logic depending on the scenario)
+
+### agents workflow for each stages we will have to use conditional edges
+set_key(".var.env", "AGENT_CODE_CREATED_FILE", "agent_code.py")
+The graph will be put in a while True loop and stop when it is done and working fine with a retry max number that will be put in the env config file "CODE_EXECUTOR_AGENT_RETRY":
+code.py > requirements.txt > check code execution logs > check output file present or code execution intent fulfilled or not vs the initial request
+./docker_agent/agent_code.py
+    > ./docker_agent/sandbox_requirements.txt and ./docker_agent/.sandbox.env
+      > sandbow_docker_execution_logs.md (Will return execution as a prompt that notify agent to provide a fix and say it is an error or OK)
+        > custom logic depending on the scenario to check if outcome is there or not
+        > use vision agent to see if output is what we want if there is any image involved
+          > code stops if "CODE_EXECUTION_AGENT_RETRY" reaches "0" or if the outcome is what we want and we will set env var "CODE_EXECUTION_JOB_SUCCESSFUL" to True
+  
+        
+###  We use APIs, some APIs that can be used
+
+- **CoinGecko API**
+Description: Offers comprehensive data on cryptocurrency markets. You can use it to test handling and correcting data related to financial information and numeric precision.
+API Endpoint: https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd
+
+- **Random Image API**
+Description: Fetches random images. This API can help test your agent's handling of binary data and media formats, along with error handling for image links.
+API Endpoint: https://yesno.wtf/api
+
+- **Agify.io**
+Description: This API predicts the age based on a given name. It's simple and provides an excellent opportunity to test handling and correcting data format issues in API requests.
+API Endpoint: https://api.agify.io?name=[name]
+
+- **Cat Facts API.**
+Description: Provides random cat facts. It’s simple and fun for testing.
+Endpoint: https://catfact.ninja/fact
+
+- **Yes/No API**
+Description: Fetches a random "yes" or "no" response, great for testing binary decision-making.
+Endpoint: https://yesno.wtf/api
+
+- **Official Joke API**
+Description: Provides random jokes. It’s simple, fun, and useful for handling textual data.
+Endpoint: https://official-joke-api.appspot.com/random_joke
+
+- **Dog CEO's Dog API**
+Description: Returns random images of dogs, useful for testing image retrieval.
+Endpoint: https://dog.ceo/api/breeds/image/random
+
+
+ i will have an agent that will use this in order to choose which api will be called and another internet agent that will then look for the documentation and come back with how to do that query requested by the user, then another agent that will use docker to create on the fly a dockerfile and execute the code. another agent that will read the logs of the executed code and tell if the task has been completed correctly or not. and if not correctly executed it will go back the agent creating the code with the error message of the fix suggested for the code generator agent to create again the code to fulfil user desired api call using python. so a  self-correcting code agents
+
+
+
+[User Request]
+     |
+[API Selection Agent]
+     |
+[Go Internet find API Documentation] (maybe can use our graph to have a report in how to do the api call)
+          |
+[Generate Code with model 1]       [Generates code with model 2] <----------------------------------------------------------|
+               |                                 |                                                                          |
+           ----------------------------------------------                                                                   |
+                    |                                                                                                       |
+[Compare both codes and learn from those in order to generate the wanted script]                                            |
+     |                                                                                                                      |
+[Execute code]                                                                                                              |
+     |                                                                                                                      |
+[Read log file]                                                                                                             |
+            |                                                                                                               |
+    -------------------------------------------------------                                                                 |
+            |                            |                                                                                  |
+[Code is ok, we keep going]    [Error in the execution]                                                                     |
+     |                           |                                                                                          |
+     |                           |______________---> [get env vars needed (Initial request, api choosen), log returned error, add prompt asking to fix the code]
+     |
+[Success] ---> [Output Results]
+
+
+#### Parallele node execution in langgraph
+
+- code example:
+```python
+# import needed
+from langchain_core.runnables import RunnableParallel
+
+# Define models or prompts
+model = ChatOpenAI()
+joke_chain = ChatPromptTemplate.from_template("Tell me a joke about {topic}") | model
+poem_chain = ChatPromptTemplate.from_template("Write a 2-line poem about {topic}") | model
+
+# Run both chains in parallel
+parallel_tasks = RunnableParallel(joke=joke_chain, poem=poem_chain)
+
+# Execute in parallel
+results = parallel_tasks.invoke({"topic": "AI"})
+print(results)
+
+Outputs DICT[str, str]:
+{
+    "joke": "Why don't scientists trust atoms? Because they make up everything!",
+    "poem": "AI so bright, codes through the night."
+}
+
+```
+
+
+
+
+
 

@@ -1,3 +1,4 @@
+# This is the docker file that will copy the file code created by the agent and execute it in the python sanbox
 FROM python:3.9-slim
 COPY ../requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

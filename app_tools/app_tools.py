@@ -26,7 +26,9 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path='.env', override=False)
 load_dotenv(dotenv_path=".vars", override=True)
 
+
 # TOOLS
+
 ## Internet Search Tool
 internet_search_tool = DuckDuckGoSearchRun()
 tool_internet = Tool(
@@ -39,15 +41,56 @@ def search(query: str, state: MessagesState = MessagesState()):
     """Call to surf the web."""
     search_results = internet_search_tool.run(query)
     return {"messages": [search_results]}
-
-
-# TOOL NODES
+# INTERNET TOOL NODES
 tool_search_node = ToolNode([search])
-
 # LLMs WITH BINDED TOOLS
 llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([search]) 
 
+## API call tool
+@tool
+def jokes(state: MessageState = MessageState()) -> List[str]:
+  """
+  APIs that provides random jokes.
+    
+  <choices of tools>
+    <tool>
+        <name>joke</name>
+        <description>Provides random jokes.</description>>
+    </tool>
+  </choices of tools>
+  """
+  return {"messages" : ["joke"]}
 
+def agify(state: MessageState = MessageState()) -> List[str]:
+  """
+  APIs that predicts the age based on a given name.
+    
+  <choices of tools>
+    <tool>
+        <name>agify</name>
+        <description>This API predicts the age based on a given name.</description>>
+    </tool>
+  </choices of tools>
+  """
+  return {"messages" : ["agify"]}
+
+def dogimages(state: MessageState = MessageState()) -> List[str]:
+  """
+  APIs that returns random images of dogs
+    
+  <choices of tools>
+    <tool>
+        <name>dogimage</name>
+        <description>Returns random images of dogs</description>>
+    </tool>
+  </choices of tools>
+  """
+  return {"messages" : ["dogimages"]}
+
+# API TOOL CHOICE NODE
+tool_agent_decide_which_api_node = ToolNode([jokes, agify, dogimages])
+# LLM BINDED WITH TOOLS
+llm_api_call_tool_choice = groq_llm_mixtral_7b.bind_tools([jokes, agify, dogimages])
 
 
 
