@@ -124,11 +124,12 @@ def error_handler(state: MessagesState):
 
   return {"messages": [{"role": "ai", "content": f"An error occured, error message: {last_message}"}]}
 
-def find_documentation_online_agent(state: MessagesState):
+def find_documentation_online_agent(APIs: Dict[str,str] = apis, state: MessagesState):
     messages = state['messages']
+    last_message = messages[-1].content
     print("message state -1: ", messages[-1].content)
-    # print("messages from call_model func: ", messages)
-    prompt = f"We have to find online how to make a python script to make a simple API call and get the response in mardown to: {messages[-1].content}"
+    user_initial_query = os.getenv("USER_INITIAL_QUERY")
+    prompt = f"We have to find online how to make a Python script to make a simple API call and get the response in mardown to this: {last_message}. Here is the different APIs urls that we have: {APIs}. Select just the one corresponding accourdingly to user intent: {user_initial_query}. And search how to make a Python script to call that URL and return the response using Python."
     response = llm_with_internet_search_tool.invoke(prompt)
     return {"messages": [response]}
 
@@ -139,11 +140,12 @@ def documentation_writer(apis: Dict[str,str] = apis, state: MessagesState):
   sek_key(".var.env", "DOCUMENTATION_FOUND_ONLINE", last_message)
   load_dotenv(dotenv_path=".vars.env", override=True)
   
+  documentation_found_online = os.getenv("DOCUMENTATION_FOUND_ONLINE")
   user_initial_query = os.getenv("USER_INITIAL_QUERY")
   llm = groq_llm_mixtral_7b
   prompt = PromptTemplate.from_template("{query}")
   chain = prompt | llm
-  result = chain.invoke({"query": f"User wanted a Python script in markdown to call an API: {user_initial_query}. Our agent found some documentation online: <doc>{os.getenv('DOCUMENTATION_FOUND_ONLINE')}</doc>. Can you write in markdown format detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <api links>{apis}</api links>. Calling and returning the formatted response. We need instruction like documentation so that llm agent called will understand and provide the code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it."})
+  result = chain.invoke({"query": f"User wanted a Python script in markdown to call an API: {user_initial_query}. Our agent found some documentation online: <doc>{documentation_found_online}</doc>. Can you write in markdown format detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <api links>{apis}</api links>. Calling and returning the formatted response. We need instruction like documentation so that llm agent called will understand and provide the code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it."})
   
   # write the documentation to a file
   with open(os.getenv("CODE_DOCUMENTATION_FILE_PAH"), "w", encoding="utf-8") as code_doc:
@@ -188,14 +190,43 @@ def gemma_3_7b_script_creator(state: MessagesState):
   
   return {"messages": [f"gemma_3_7b: {response.content}"]}
 
+
+def documentation__steps_evaluator_and_final_doc_judge(state: MessagesState):
+...
+
+
 # CONDITIONAL EDGES FUNCTIONS
-def run_code_in_parallel(state: MessagesStates):
+
+def rewrite_documentation_or_execute(state: MessagesState):
   messages = state['messages']
-  last_message = messages[-1].content
   
-  if ("joke" not in last_message) or ("agify" not in last_message) or ("dogimages" not in last_message):
+  # documentation writen by "document_writer"
+  documentation_from_document_writer = messages[-1].content
+  # documentation from tool_search_node after find_documentation_online_agent
+  documentation_from_online_search = messages[-2].content
+  # which api has been chosen
+  which_api_chosen = messages[-4].content 
+  # utils function that will read doc and evaluate it with OK or NOT OK and REASON using structured output
+  ....
+  response = ...
+  
+  # this one continues the workflow: `response` will have to have the three models in the response, we can create an util function that will do the job
+  if "llama_3_8b" in response and documentation_from_document_writer == "OK" and documentation_from_online_search == "OK":
+    return "llama_3_8b_script_creator"
+  elif "llama_3_70b" in response and documentation_from_document_writer == "OK" and documentation_from_online_search == "OK":
+    return "llama_3_70b_script_creator"
+  elif "gemma_3_7b" in response and documentation_from_document_writer == "OK" and documentation_from_online_search == "OK":
+    return "gemma_3_7b_script_creator"
+  # this one loops back up to recreate initial documentation by searching online
+  elif documentation_from_document_writer == "OK" and documentation_from_online_search == "NOT OK":
+    return "find_documentation_online_agent"
+  # this one loops back the document writer
+  elif  documentation_from_document_writer == "NOT OK" and documentation_from_online_search == "OK":
+   return "documentation_writer"
+  else:
+    # here in "error_handler" make sure to capture the number of retry left so implement retry forn an env var and don't forget to reset it
     return "error_handler"
-  return "find_documentation_online_agent"
+
 
 
 # Initialize states
@@ -209,6 +240,7 @@ workflow.add_node("tool_agent_decide_which_api_node", tool_agent_decide_which_ap
 workflow.add_node("find_documentation_online_agent", find_documentation_online_agent)
 workflow.add_node("tool_search_node", tool_search_node)
 workflow.add_node("documentation_writer", documentation_writer)
+workflow,add_node("documentation__steps_evaluator_and_final_doc_judge", documentation__steps_evaluator_and_final_doc_judge)
 workflow.add_node("llama_3_8b_script_creator", llama_3_8b_script_creator)
 workflow.add_node("llama_3_70b_script_creator", llama_3_70b_script_creator)
 workflow.add_node("gemma_3_7b_script_creator", gemma_3_7b_script_creator)
@@ -224,23 +256,25 @@ see if we add conditional adge from "get_user_input" node
 workflow.add_edge("tool_api_choose_agent", "tool_agent_decide_which_api_node")
 # answer user
 workflow.add_edge("error_handler", "answer_user")
-workflow.add_conditional_edge(
-  "tool_agent_decide_which_api_node", 
-  find_documentation
-)
+workflow.add_edge("tool_agent_decide_which_api_node", "find_documentation_online_agent")
 workflow.add_edge("find_documentation_online_agent", "tool_search_node")
 workflow.add_edge("tool_search_node", "documentation_writer")
-workflow.add_edge("documentation_writer", "llama_3_8b_script_creator")
-workflow.add_edge("documentation_writer", "llama_3_70b_script_creator")
-workflow.add_edge("documentation_writer", "gemma_3_7b_script_creator")
+workflow.add_edge("documentation_writer", "documentation__steps_evaluator_and_final_doc_judge")
+workflow.add_conditional_edge(
+  "documentation__steps_evaluator_and_final_doc_judge",
+  # conditional that will go to code execution, or loop back to find_documentation_online_agent, or loop back to  document_writer
+  # we need to ask llm to read each docs or output [-1][-2][-3] and tell for eahc `OK` or `NOT OK` so that we can create conditions in function of that and go back to try again.
+  # need to set a retry_max as well with env vars
+  rewrite_documentation_or_execute
+)
 workflow.add_edge("llama_3_8b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_edge("llama_3_70b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_edge("gemma_3_7b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_condition_edge(
   "code_evaluator_and_final_script_writer",
-  # conditional that will go to code execution, or loop back to find_documentation_online_agent, or loop back to  document_writer
-  # we need to ask llm to read each docs or output [-1][-2][-3] and tell for eahc `OK` or `NOT OK` so that we can create conditions in function of that and go back to try again.
-  # need to set a retry_max as well with env vars
+  """
+   Fonction to be made
+  """
   rewrite_or_execute
 )
 # end

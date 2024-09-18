@@ -2911,7 +2911,15 @@ Outputs DICT[str, str]:
 
 ```
 
-
+# Next
+- implement `retry` for code_execution graph from a env var
+- finish the logic and funcitons coding and utils functions for the code executor graph
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
+- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
+- we can check if we are going to add docker image of redis specialized in semantic search through cache. 
+- we need to implement deletion of data and reset all also.
+- a logic with a new funciton that going to use the same funciton as the one query_matching that will check if the document exist in our db if yes if does a query matching and jumps directly to he retrieval graph , if not it is going to use the normal route process.
+- add langfuse
 
 
 
