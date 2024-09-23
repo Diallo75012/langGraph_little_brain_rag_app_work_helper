@@ -18,7 +18,8 @@ from dotenv import load_dotenv
 # load env vars
 load_dotenv(dotenv_path='.env', override=False)
 
-# structured classes
+### REPORT 
+# structured classe for report generation
 class ReportAnswerCreationClass(BaseModel):
     """Create a detailed professional report using markdown"""
     title: str = Field(default="", description="From the query make a very engaging title int he form of a question using markdown format")
@@ -27,7 +28,7 @@ class ReportAnswerCreationClass(BaseModel):
     bullet_points: str = Field(default="", description="Bullet points with some examples in a markdown format")
 
 
-#
+# function for report generation structured output 
 def structured_output_for_agent(structured_class: ReportAnswerCreationClass, query: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
@@ -49,6 +50,69 @@ def structured_output_for_agent(structured_class: ReportAnswerCreationClass, que
     "BULLET_POINTS": response.bullet_points
   }
   return response_dict
+
+
+### DOCUMENTATION EVALUATION
+# structured output class for code documentation judge
+class CodeDocumentionEvaluation(BaseModel):
+    """Evaluate quality of documentation for code generation created for other LLM agents to be able to generate Python scripts following the those instructions."""
+    decision: str = Field(default="", description="Analyse the documentation created instruction and evaluate if it needs to be written again  or if it is validated as good documentation. Answer 'rewrite' to request documentation to be witten again or 'generate' to validate as good documentation for LLM Agent to understand it and generate code easily following those instructions.")
+    reason: str = Field(default="", description="Reasons motivating decision.")
+    stage: str =  Field(default="", description="if decision is 'rewrite' indicate here which stage need to be done again: 'internet' for internet search to get more information as poorly informed or 'rewrite' for just rewriting the documentation in a better way.")
+
+# function for report generation structured output 
+def structured_output_for_agent_doc_evaluator(structured_class: CodeDocumentionEvaluation, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure.
+  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "DECISION": response.decision,
+    "REASON": response.reason,
+    "STAGE": response.stage,
+  }
+  return response_dict
+
+### CODE EVALUATION
+# structured output class for code documentation judge
+class CodeDocumentionEvaluation(BaseModel):
+    """Evaluate quality of documentation for code generation created for other LLM agents to be able to generate Python scripts following the those instructions."""
+    decision: str = Field(default="", description="Analyse the documentation created instruction and evaluate if it needs to be written again  or if it is validated as good documentation. Answer 'rewrite' to request documentation to be witten again or 'generate' to validate as good documentation for LLM Agent to understand it and generate code easily following those instructions.")
+    reason: str = Field(default="", description="Reasons motivating decision.")
+    stage: str =  Field(default="", description="if decision is 'rewrite' indicate here which stage need to be done again: 'internet' for internet search to get more information as poorly informed or 'rewrite' for just rewriting the documentation in a better way.")
+
+# function for report generation structured output 
+def structured_output_for_agent_doc_evaluator(structured_class: CodeDocumentionEvaluation, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure.
+  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "DECISION": response.decision,
+    "REASON": response.reason,
+    "STAGE": response.stage,
+  }
+  return response_dict
+
+
 
 '''
 if __name__ == "__main__":

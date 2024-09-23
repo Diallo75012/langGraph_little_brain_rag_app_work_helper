@@ -33,7 +33,8 @@ from langgraph.graph import MessagesState
 from prompts.prompts import (
   detect_content_type_prompt,
   summarize_text_prompt,
-  generate_title_prompt
+  generate_title_prompt,
+  rewrite_or_create_api_code_script_prompt
 )
 # USER QUERY ANALYSIS AND TRANSFORMATION
 from lib_helpers.query_analyzer_module import detect_content_type # returns `str`
@@ -95,6 +96,23 @@ create_table_if_not_exists(os.getenv("TABLE_NAME"))
  - Have a function node that will just check the date and if 24h have passed it will reset the column retrieved in the database to False (for the moment we work with a TTL of 24h can be extended if needed so put the TTL as a function parameter that will be the same as in Redis). `from embedding_and_retrieval import clear_cache
 """
 ### HELPERS
+# creation of prompts
+def prompt_creation(target_prompt_human_system_or_ai: Dict[str, Any], **kwargs: Any) -> str: #-> PromptTemplate:
+    input_variables = target_prompt_human_system_or_ai.get("input_variables", [])
+
+    prompt = PromptTemplate(
+        template=target_prompt_human_system_or_ai["template"],
+        input_variables=input_variables
+    )
+
+    formatted_template = prompt.format(**kwargs) if input_variables else target_prompt_human_system_or_ai["template"]
+    print("formatted_template: ", formatted_template)
+    return formatted_template
+    #return PromptTemplate(
+    #    template=formatted_template,
+    #    input_variables=[]
+    #)
+
 # function to beautify output for an ease of human creditizens reading
 def message_to_dict(message):
     if isinstance(message, (AIMessage, HumanMessage, SystemMessage, ToolMessage)):
@@ -352,7 +370,7 @@ def answer_user_with_report_from_retrieved_data(state: MessagesState):
   prompt = answer_user_with_report_from_retrieved_data_prompt["human"]["template"]
   prompt_human_with_input_vars_filled = eval(f'f"""{prompt}"""')
   print(f"\nprompt_human_with_input_vars_filled: {prompt_human_with_input_vars_filled}\n")
-  system_message = SystemMessage(content=prompt_human_with_input_vars_filled)
+  system_message = SystemMessage(content=answer_user_with_report_from_retrieved_data_prompt["system"]["template"])
   human_message = HumanMessage(content=prompt_human_with_input_vars_filled)
   messages = [system_message, human_message]
   response = groq_llm_mixtral_7b.invoke(messages)
@@ -606,6 +624,67 @@ def custom_chunk_and_embed_to_vectordb(state: MessagesState) -> Dict[str, Any]:
   # update state
 
   return {"messages": [{"role": "system", "content": "success: data chunks fully embedded to vectordb"}]}
+
+
+## JDUGE DOCUMENTATION WRITTEN BY AGENT TO MAKE API CALL
+# The function will decide if we need to rewrite the documentation or if we can start writing the code, then the code will be sent to different llms to create scripts in parallel using conditional edges that can run different branches together
+def rewrite_or_create_api_code_script(state: MessagesState, apis: Dict[str,str]) -> str:
+  """
+    Here we will judge if the agent written documentation is valid or need to be re-written.
+    If the documentation is valid, we will then ask different agents to write scripts corresponding to those instructions
+  """
+  # vars
+  # documentation written by agent
+  messages = state["messages"]
+  last_message = messages[-1].content
+  # user inital query
+  user_initial_query = os.getenv("USER_INITIAL_QUERY")
+  # api chosen to satisfy query
+  api_choice = os.getenv("API_CHOICE")
+  # links for api calls for each apis existing in our choices of apis
+  apis_links = apis
+  '''
+    Here check if we can use structures output format to access what we need
+    - decision: rewrite or generate
+    - reason: reason why you have taken that decision
+    - stage: the stage to return to if decision is rewrite: internet or rewrite
+  '''
+  prompt = rewrite_or_create_api_code_script_prompt["human"]["template"]
+  prompt_human_with_input_vars_filled = eval(f'f"""{prompt}"""')
+  print(f"\nprompt_human_with_input_vars_filled: {prompt_human_with_input_vars_filled}\n")
+  system_message = SystemMessage(content=rewrite_or_create_api_code_script_prompt["system"]["template"])
+  human_message = HumanMessage(content=prompt_human_with_input_vars_filled)
+  messages = [system_message, human_message]
+  response = groq_llm_mixtral_7b.invoke(messages)
+  if response.content["decision"] == "rewrite":
+    return {"messages": [{"role": "ai", "content": f"disagree:rewrite,{response.content['reason']}"}]} # use spliting technique to get what is wanted 
+  elif response.content["decision"] == "generate":
+    return {"messages": [{"role": "ai", "content": f"success:generate"}]}
+  else:
+    return {"messages": [{"role": "ai", "content": f"error:{response.content}"}]}
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

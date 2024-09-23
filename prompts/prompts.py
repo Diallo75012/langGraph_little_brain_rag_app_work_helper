@@ -160,6 +160,22 @@ structured_outpout_report_prompt = {
 }
 
 
+# prompt for judge agent that will evaluate if documentation written by agent need to be rewritten of if it allow for agents to start writting code script based on that document
+rewrite_or_create_api_code_script_prompt = {
+  "system": {
+    "template": "You are an expert in Python code documentation review. You decide if the documentation needs to be rewritten as it contains errors or is not explained properly for an LLM to generate a Python script based on those instructions OR you validate the documentation as it is satisfactory to user needs and LLM agents will be able to comprehend/understand the documentation and easily create code following those instructions.\n{format_instructions}\n{query}\n", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "We need to instruct LLMs to create a Python script to make API calls based on inital request which is: {user_initial_query}. out of the APIs choices which were those ones: {apis_links}, LLM agents have chosen that one {api_choice}. Based on that our LLM Agent have created some Python document to instruct LLM agents how to create the script. Please see and analyse the following documentation generated then tell if it can be used to instruct LLM agents to make a Python script satisfying inital request: <INSTRUCTION DOCUEMNTATION>{documentation}</INSTRUCTION DOCUMENTATION>", 
+    "input_variables": {"user_inital_query": "", "apis_links": "", "api_choice": "", "documentation": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+
 
 
 

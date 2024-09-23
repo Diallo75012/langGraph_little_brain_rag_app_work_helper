@@ -2911,6 +2911,44 @@ Outputs DICT[str, str]:
 
 ```
 
+- OR
+```python
+# conditional edge returning a lsit of nodes
+def conditional_edge_decision(state: MessagesState):
+    # Based on some condition, return multiple nodes to be executed
+    if some_condition:
+        return ["node_a", "node_b", "node_c"]
+    else:
+        return ["fallback_node"]
+ 
+# can also create an intermediary node that will get the ouput of the condition edge returned last message and stream that to all other nodes that will run in parallele
+# but we will just use a list of nodes in the conditional edge function returned value when success is there
+workflow.add_edge("intermediary_node", "llama_3_8b_script_creator")
+workflow.add_edge("intermediary_node", "llama_3_70b_script_creator")
+workflow.add_edge("intermediary_node", "gemma_3_7b_script_creator")
+
+# we could use a dispacher nodes as well
+def dispatcher_node(state: MessagesState):
+    nodes_to_run = ["node_a", "node_b", "node_c"]
+    results = []
+
+    # Dispatch all tasks in parallel
+    for node in nodes_to_run:
+        result = run_node(node)
+        results.append(result)
+    
+    # Return results to the next node
+    return results
+
+# or an async node, but don't know how it would work, just an example
+async def execute_parallel_nodes():
+    task_1 = asyncio.create_task(run_node("node_a"))
+    task_2 = asyncio.create_task(run_node("node_b"))
+    task_3 = asyncio.create_task(run_node("node_c"))
+
+    await asyncio.gather(task_1, task_2, task_3)
+```
+
 # Next
 - implement `retry` for code_execution graph from a env var
 - finish the logic and funcitons coding and utils functions for the code executor graph

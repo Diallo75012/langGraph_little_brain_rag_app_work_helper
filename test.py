@@ -53,15 +53,16 @@ from app_tools.app_tools import (
 )
 import requests
 from bs4 import BeautifulSoup
-from app import (
+
+from app_utils import (
   process_query,
   is_url_or_pdf,
   store_dataframe_to_db,
-  delete_table,
+  #delete_table,
   custom_chunk_and_embed_to_vectordb,
-  query_redis_cache_then_vecotrdb_if_no_cache,
+  #query_redis_cache_then_vecotrdb_if_no_cache,
   # tool function
-  internet_research_user_query,
+  # internet_research_user_query,
   # graph conditional adge helper function
   decide_next_step,
   # delete parquet file after db storage
@@ -83,7 +84,7 @@ from langchain_core.utils.function_calling import convert_to_openai_function # u
 from langchain_core.output_parsers.pydantic import PydanticOutputParser
 
 
-from app_states.app_graph_states import StateCustom
+#from app_states.app_graph_states import StateCustom
 # for graph creation and management
 from langgraph.checkpoint import MemorySaver
 from langgraph.graph import END, StateGraph, MessagesState
@@ -639,7 +640,7 @@ def beautify_output(data):
 
 # using STREAM
 # we can maybe get the uder input first and then inject it as first message of the state: `{"messages": [HumanMessage(content=user_input)]}`
-
+'''
 count = 0
 for step in app.stream(
     {"messages": [SystemMessage(content="Graph Embedding Webpage or PDF")]},
@@ -654,7 +655,7 @@ for step in app.stream(
 graph_image = app.get_graph().draw_png()
 with open("graph.png", "wb") as f:
     f.write(graph_image)
-
+'''
 
 '''
 # DEMO TOOL USE BY AGENT USING `AGENT NODE` AND `TOOLNODE`
@@ -799,10 +800,28 @@ with open("agent_tool_call_visualization.png", "wb") as f:
 
 
 
+from typing import Dict, Any
+from langchain.prompts import PromptTemplate, ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, AIMessagePromptTemplate
+from prompts.prompts import rewrite_or_create_api_code_script_prompt
 
 
+def prompt_creation(target_prompt: Dict[str, Any], **kwargs: Any) -> PromptTemplate:
+    input_variables = target_prompt.get("input_variables", [])
+
+    prompt = PromptTemplate(
+        template=target_prompt["template"],
+        input_variables=input_variables
+    )
+
+    formatted_template = prompt.format(**kwargs) if input_variables else target_prompt["template"]
+    print("formatted_template: ", formatted_template, type(formatted_template))
+    return PromptTemplate(
+        template=formatted_template,
+        input_variables=[]
+    )
 
 
+prompt_creation(rewrite_or_create_api_code_script_prompt["human"], documentation= "MY DOCUMENTATION", user_initial_query= "MY INITIAL QUERY", api_choice= "MY API CHOICE", apis_links= "MY APP LINKS")
 
 
 

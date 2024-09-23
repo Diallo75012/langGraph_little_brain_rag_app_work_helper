@@ -1,4 +1,6 @@
 import os
+# for typing func parameters and outputs and states
+from typing import Dict, List, Tuple, Any, Optional
 # one is @tool decorator and the other Tool class
 from langchain_core.tools import tool, Tool
 from langgraph.graph import MessagesState
@@ -48,7 +50,7 @@ llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([search])
 
 ## API call tool
 @tool
-def jokes(state: MessageState = MessageState()) -> List[str]:
+def jokes(state: MessagesState = MessagesState()) -> List[str]:
   """
   APIs that provides random jokes.
     
@@ -60,8 +62,8 @@ def jokes(state: MessageState = MessageState()) -> List[str]:
   </choices of tools>
   """
   return {"messages" : ["joke"]}
-
-def agify(state: MessageState = MessageState()) -> List[str]:
+@tool
+def agify(state: MessagesState = MessagesState()) -> List[str]:
   """
   APIs that predicts the age based on a given name.
     
@@ -73,8 +75,8 @@ def agify(state: MessageState = MessageState()) -> List[str]:
   </choices of tools>
   """
   return {"messages" : ["agify"]}
-
-def dogimages(state: MessageState = MessageState()) -> List[str]:
+@tool
+def dogimages(state: MessagesState = MessagesState()) -> List[str]:
   """
   APIs that returns random images of dogs
     
