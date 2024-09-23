@@ -14,9 +14,16 @@ from structured_output.structured_output import (
   # class for document quality judgement
   CodeDocumentionEvaluation,
   # function for documentation evaluation
-  structured_output_for_agent_doc_evaluator
+  structured_output_for_agent_doc_evaluator,
+  # class for script quality evaluation
+  CodeScriptEvaluation,
+  # function for script evaluation
+  structured_output_for_agent_code_evaluator
 )
-from prompts.prompts import structured_outpout_report_prompt
+from prompts.prompts import (
+  structured_outpout_report_prompt,
+  code_evaluator_and_final_script_writer_prompt
+)
 from typing import Dict, List, Any, Optional, Union
 # Prompts LAngchain and Custom
 from langchain_core.prompts import PromptTemplate
@@ -264,6 +271,9 @@ def code_evaluator_and_final_script_writer(state: MessagesState):
     """
 
     # vars
+    # the final state messages returned by the node
+    llm_code_valid_responses_list_dict = []
+    llm_code_invalid_responses_list_dict = []
     # user inital query
     user_initial_query = os.getenv("USER_INITIAL_QUERY")
     # api chosen to satisfy query
@@ -298,9 +308,38 @@ def code_evaluator_and_final_script_writer(state: MessagesState):
       """
   
       # we need to fill this template to create the query for this code evaluation task
-      query = prompt_creation(<PUT_HERE_PROMPT_TEMPLATE>["human"], user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis_links, llm=k, code=v)
-  
-      evaluation = structured_output_for_agent(<STRUCTURED_OUTPUT_CLASS>, query, <PUT_HERE_PROMPT_TEMPLATE>["system"]["template"])
+      query = prompt_creation(code_evaluator_and_final_script_writer_prompt["human"], user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis_links, code=v)
+      try:
+        evaluation = structured_output_for_agent_code_evaluator(CodeScriptEvaluation, query, code_evaluator_and_final_script_writer_prompt["system"]["template"])
+        print("CODE EVALUATION: ", evaluation)
+        """
+        { 
+          "VALIDITY": response.decision,
+          "REASON": response.reason,
+        }
+        """
+        if "yes" in evaluation["VALIDITY"].lower():
+          llm_code_valid_responses_list_dict.append({k: v})
+        elif "no" in evaluation["VALIDITY"].lower():
+          llm_code_invalid_responses_list_dict.append({k: v, "reason": evaluation['REASON']})
+      except Exception as e:
+        return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to evaluate if LLM codes are valid:{e}"})}]}
+    
+    return {"messages": [{"role": "ai", "content": json.dumps({"valid": llm_code_valid_responses_list_dict, "invalid": llm_code_invalid_responses_list_dict})}]}
+
+def code_execution_node(state: StateMessages):
+  messages = state["messages"]
+  # get the valid code LIST[DICT[llm, script]]
+  valid_code = json.laods(messages[-1].content)
+  '''
+   Here import the module that is inside docker_agent folder to use that function to execute the script files saved in the special folder there.
+   check the code again of that function to recognize the string "agent_code_execute_in_docker_" startwith() maybe and start the agent job. 
+   There is a log file that will have the results and can be used by next agent to check if everything went well or if we nned to go to another node and checl retries again
+  '''
+  retry_code_execution = int(os.getnev("RETRY_CODE_EXECUTION"))
+  '''
+   to be done
+  '''
 
 
 # CONDITIONAL EDGES FUNCTIONS
@@ -314,8 +353,15 @@ def rewrite_documentation_or_execute(state: MessagesState):
   decision_dict = json.loads(last_message)
   # we check retries are not null
   load_dotenv(dotenv_path=".vars.env", override=True)
-  retry_doc_validation = os.getenv("RETRY_DOC_VALIDATION")
+  retry_doc_validation = int(os.getenv("RETRY_DOC_VALIDATION"))
+  
   if retry_doc_validation == 0:
+    
+    # decrease the retry value
+    retry_doc_validation -= 1
+    set_key(".var.env", "RETRY_DOC_VALIDATION", str(retry_doc_validation))
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    
     state["messages"].append({"role": "system", "content": "All retries have been consummed, failed to rewrite documentation"})
     return "error_handler"
   
@@ -331,12 +377,57 @@ def rewrite_documentation_or_execute(state: MessagesState):
     return "error_handler"
 
 
+def rewrite_or_execute(state: MessagesState):
+  messages = state["messages"]
+  # we receive a DICT[LIST[DICT]]
+  evaluations =  json.loads(messages[-1].content)
+  print("EVALUATIONS in conditional edge: ", evaluations, type(evalauations))
+  
+  # forward try/except error to node 'error_handler'
+  if "error" in evaluations:
+    return "error_handler"
+  
+  valid_code = evaluations["valid"]
+  invalid_code = evaluations["invalid"]
+  
+  load_dotenv(dotenv_path=".vars.env", override=True)
+  retry_doc_validation = int(os.getenv("RETRY_CODE_VALIDATION"))
+  
+  # if no valid code we will check retries and go back to the coding nodes
+  if not valid_code and retry_code_validation > 0:
+    
+    # decrease the retry value
+    retry_code_validation -= 1
+    set_key(".var.env", "RETRY_CODE_VALIDATION", str(retry_code_validation))
+    load_dotenv(dotenv_path=".vars.env", override=True)
+    
+    return ["llama_3_8b_script_creator", "llama_3_70b_script_creator", "gemma_3_7b_script_creator"]
+   
+   if valid_code:
+     # we loop over the valid code and save those to files that will be executed in next graphm we might need to put those in a folder nested inside the docker stuff
+     for elem in valid_code:
+       count = 0
+       for llm, script in elem:
+         count += 1
+         with open(f"./docker_agent/agents_scripts/agent_code_execute_in_docker_{llm}_{count}", "w", encoding="utf-8") as llm_script:
+           llm_script.write("#!/usr/bin/env python3")
+           llm_script.write(f"# code from: {llm} LLM Agent\n# User initial request: {os.getenv('USER_INITIAL_REQUEST')}\n'''This code have been generated by an LLM Agent'''\n\n")
+           llm_script.write(script)
+     
+     print("All Python script files are ready to be executed!")
+     
+     # append the valid code to state messages LIST[DICT]
+     state["messages"].append({"role": "system", "content": json.dumps(valid_code)})
+     # go to inter_graph_node fo end this script creation graph
+     return "code_execution_node"
+  
+
 
 # Initialize states
 workflow = StateGraph(MessagesState)
 
 # nodes
-workflow.add_node("error_handler", error_handler)
+workflow.add_node("error_handler", error_handler) # here we need to manage error handler to not just stop the app but loop bas to some nodes with the reasons and check retry
 workflow.add_node("get_user_input", get_user_input)
 workflow.add_node("tool_api_choose_agent", tool_api_choose_agent)
 workflow.add_node("tool_agent_decide_which_api_node", tool_agent_decide_which_api_node)
@@ -347,8 +438,13 @@ workflow,add_node("documentation_steps_evaluator_and_doc_judge", documentation_s
 workflow.add_node("llama_3_8b_script_creator", llama_3_8b_script_creator)
 workflow.add_node("llama_3_70b_script_creator", llama_3_70b_script_creator)
 workflow.add_node("gemma_3_7b_script_creator", gemma_3_7b_script_creator)
+workflow.add_node("code_execution_node", code_execution_node)
 workflow.add_node("inter_graph_node", inter_graph_node)
-
+'''
+  - next graph need an agent that will create the requirement.txt file for the code created here 
+  - and another that will execute the code in docker 
+  - and a report agent to make a report on code execution for end user response to request
+'''
 
 # edges
 workflow.set_entry_point("get_user_input")
@@ -365,9 +461,6 @@ workflow.add_edge("tool_search_node", "documentation_writer")
 workflow.add_edge("documentation_writer", "documentation_steps_evaluator_and_doc_judge")
 workflow.add_conditional_edge(
   "documentation_steps_evaluator_and_doc_judge",
-  # conditional that will go to code execution, or loop back to find_documentation_online_agent, or loop back to  document_writer
-  # we need to ask llm to read each docs or output [-1][-2][-3] and tell for eahc `OK` or `NOT OK` so that we can create conditions in function of that and go back to try again.
-  # need to set a retry_max as well with env vars
   rewrite_documentation_or_execute,
 )
 workflow.add_edge("llama_3_8b_script_creator", "code_evaluator_and_final_script_writer")
@@ -375,17 +468,23 @@ workflow.add_edge("llama_3_70b_script_creator", "code_evaluator_and_final_script
 workflow.add_edge("gemma_3_7b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_condition_edge(
   "code_evaluator_and_final_script_writer",
-  """
-   Fonction to be made
-  """
   rewrite_or_execute
 )
-'''
-# dont forget `retry_doc_excecution = os.getenv("RETRY_CODE_EXECUTION=")` after that
-'''
+workflow.add_edge("code_evaluator_and_final_script_writer", "code_execution_node")
+workflow.add_condition_edge(
+  "code_execution_node",
+  success_execution_or_retry_or_return_error # to be done
+)
 
+
+
+
+# error handler routes
+workflow.add_edge("documentation_steps_evaluator_and_doc_judge", "error_handler")
+workflow.add_edge("code_evaluator_and_final_script_writer", "error_handler")
 
 # end
+workflow.add_edge("error_handler", END)
 workflow.add_edge("inter_graph_node", END)
 
 # compile

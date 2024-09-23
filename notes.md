@@ -2950,15 +2950,19 @@ async def execute_parallel_nodes():
 ```
 
 # Next
-- implement `retry` for code_execution graph from a env var
-- finish the logic and funcitons coding and utils functions for the code executor graph
-- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one.
-- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB.
-- we can check if we are going to add docker image of redis specialized in semantic search through cache. 
-- we need to implement deletion of data and reset all also.
-- a logic with a new funciton that going to use the same funciton as the one query_matching that will check if the document exist in our db if yes if does a query matching and jumps directly to he retrieval graph , if not it is going to use the normal route process.
-- add langfuse
+- implement `retry` for code_execution graph from a env var - OK
 
+# next
+- finish the logic and funcitons coding and utils functions for the code executor graph - IN PROCESS
+- keep in mind the pdf parser that might need to be refactored to chunk using same process as the webpage parser one. - NOT OBLIGED
+- reset the cache to zero as well so that we have the option to delete everything for some future task that doesn't need the data to persist forever in the DB. - TO BE DONE
+- we need to implement deletion of data and reset all also. Like database data so it is stateless app just do job and erase everything after a certain amount of time, so maybe keep track of documents names in a list env var updated in a dict with time start and when the TTL is reached it will be erased automatically (at app run or cronjob?..) - TO BE DONE
+- we can check if we are going to add docker image of redis specialized in semantic search through cache.  - NOT OBLIGED BUT KEEP IN MIND FOR FUTURE PROJECTS INTERESTING
+
+- a logic with a new funciton that going to use the same funciton as the one query_matching that will check if the document exist in our db if yes if does a query matching and jumps directly to he retrieval graph , if not it is going to use the normal route process.  - NOT DONE YET BUT TO BE IMPLEMENTED
+- add langfuse - TO BE DONE
+- finish the logic of the code execution graph and beware of retries, check again to make sure it is all good, draw a diagram so that you don't miss anything in the retry flow. - TO BE DONE NOW
+0 brush up logic of which code will be chosen for user at the end if we have several codes being successfully executed maybe ahve an agent with structured output chosing among those with reason why and render that one to user.. - TO BE DONE NOW
 
 
 

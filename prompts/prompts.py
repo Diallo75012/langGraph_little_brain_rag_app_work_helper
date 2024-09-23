@@ -167,7 +167,7 @@ rewrite_or_create_api_code_script_prompt = {
     "input_variables": {}
   },
   "human": {
-    "template": "We need to instruct LLMs to create a Python script to make API calls based on inital request which is: {user_initial_query}. out of the APIs choices which were those ones: {apis_links}, LLM agents have chosen that one {api_choice}. Based on that our LLM Agent have created some Python document to instruct LLM agents how to create the script. Please see and analyse the following documentation generated then tell if it can be used to instruct LLM agents to make a Python script satisfying inital request: <INSTRUCTION DOCUEMNTATION>{documentation}</INSTRUCTION DOCUMENTATION>", 
+    "template": "We need to instruct LLMs to create a Python script to make API calls based on inital request which is: {user_initial_query}. Out of the APIs choices which were those ones: {apis_links}, LLM agents have chosen that one {api_choice}. Based on that our LLM Agent have created some Python document to instruct LLM agents how to create the script. Please see and analyse the following documentation generated then tell if it can be used to instruct LLM agents to make a Python script satisfying inital request using markdown to answer: <INSTRUCTION DOCUEMNTATION>{documentation}</INSTRUCTION DOCUMENTATION>.", 
     "input_variables": {"user_inital_query": "", "apis_links": "", "api_choice": "", "documentation": ""}
   },
   "ai": {
@@ -176,7 +176,21 @@ rewrite_or_create_api_code_script_prompt = {
   },
 }
 
-
+# prompt for code script evaluation when receiving code from different nodes
+code_evaluator_and_final_script_writer_prompt = {
+  "system": {
+    "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is.\n{format_instructions}\n{query}\n", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "We want to know if the script fulfills our initial intent which is: {user_initial_query}. We have chosen one apis to be called from this: {apis_links}, and, have chosen this one: {api_choice}. Please can you tell if the code is executable, have no errors and will be a valid to execute an API call using markdown to answer. Here is the code: <CODE>{code}</CODE>.", 
+    "input_variables": {"user_inital_query": "", "apis_links": "", "api_choice": "", "code": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
 
 
 

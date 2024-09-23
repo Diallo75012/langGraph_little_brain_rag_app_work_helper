@@ -36,7 +36,7 @@ def run_script_in_docker(dockerfile_name_to_run_script: str, agent_script_file_n
         docker_file.write(f"COPY {agent_script_file_name} /app/{agent_script_file_name}\n")
         docker_file.write("COPY .sandbox.env /app/.sandbox.env\n")
         docker_file.write("WORKDIR /app\n")
-        docker_file.write('CMD ["python", "agent_code.py"]')
+        docker_file.write('CMD ["python", "{agent_script_file_name}"]')
 
     try:
         # Build the Docker image
