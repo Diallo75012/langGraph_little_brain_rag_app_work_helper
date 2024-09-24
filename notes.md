@@ -2961,8 +2961,19 @@ async def execute_parallel_nodes():
 
 - a logic with a new funciton that going to use the same funciton as the one query_matching that will check if the document exist in our db if yes if does a query matching and jumps directly to he retrieval graph , if not it is going to use the normal route process.  - NOT DONE YET BUT TO BE IMPLEMENTED
 - add langfuse - TO BE DONE
-- finish the logic of the code execution graph and beware of retries, check again to make sure it is all good, draw a diagram so that you don't miss anything in the retry flow. - TO BE DONE NOW
-0 brush up logic of which code will be chosen for user at the end if we have several codes being successfully executed maybe ahve an agent with structured output chosing among those with reason why and render that one to user.. - TO BE DONE NOW
+- finish the logic of the code execution graph and beware of retries, check again to make sure it is all good, draw a diagram so that you don't miss anything in the retry flow.  - TO BE DONE NOW - OK and diagram will be done at the end of first iteration as not that confusing
+- brush up logic of which code will be chosen for user at the end if we have several codes being successfully executed maybe have an agent with structured output chosing among those with reason why and render that one to user.. - TO BE DONE NOW
+
+# next
+- check the `next` just before this one
+- add langfuse
+- make the nodes and conditional edges after code execution conditional edge
+- make all structured outputs needed
+- put all hard coded prompts to the prompt file and import those
+
+
+
+
 
 
 

@@ -61,7 +61,7 @@ def jokes(state: MessagesState = MessagesState()) -> List[str]:
     </tool>
   </choices of tools>
   """
-  return {"messages" : ["joke"]}
+  return {"messages": [{"role": "ai", "content": ["joke"]}]}
 @tool
 def agify(state: MessagesState = MessagesState()) -> List[str]:
   """
@@ -74,7 +74,7 @@ def agify(state: MessagesState = MessagesState()) -> List[str]:
     </tool>
   </choices of tools>
   """
-  return {"messages" : ["agify"]}
+  return {"messages": [{"role": "ai", "content": ["agify"]}]}
 @tool
 def dogimages(state: MessagesState = MessagesState()) -> List[str]:
   """
@@ -87,7 +87,7 @@ def dogimages(state: MessagesState = MessagesState()) -> List[str]:
     </tool>
   </choices of tools>
   """
-  return {"messages" : ["dogimages"]}
+  return {"messages": [{"role": "ai", "content": ["dogimages"]}]}
 
 # API TOOL CHOICE NODE
 tool_agent_decide_which_api_node = ToolNode([jokes, agify, dogimages])

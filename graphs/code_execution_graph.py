@@ -35,6 +35,8 @@ Maybe will have to move those functions OR to a file having all node functions O
 from app_utils import creation_prompt
 # prompts
 from prompts.prompts import rewrite_or_create_api_code_script_prompt
+# Docker execution code
+from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker
 # Tools
 from app_tools.app_tools import (
   # internet node & internet llm binded tool
@@ -115,9 +117,10 @@ def inter_graph_node(state: MessagesState):
 # api selection
 def tool_api_choose_agent(state: MessagesState):
     messages = state['messages']
+    last_message = messages[-1].content
     print("message state -1: ", messages[-1].content, "\nmessages state -2: ", messages[-2].content)
     # print("messages from call_model func: ", messages)
-    response = llm_api_call_tool_choice.invoke(messages[-1].content)
+    response = llm_api_call_tool_choice.invoke(last_message)
     return {"messages": [response]}
 
 # NODE FUNCTIONS
@@ -327,23 +330,67 @@ def code_evaluator_and_final_script_writer(state: MessagesState):
     
     return {"messages": [{"role": "ai", "content": json.dumps({"valid": llm_code_valid_responses_list_dict, "invalid": llm_code_invalid_responses_list_dict})}]}
 
+# will execute code in docker sandbox
 def code_execution_node(state: StateMessages):
-  messages = state["messages"]
+  #messages = state["messages"]
   # get the valid code LIST[DICT[llm, script]]
-  valid_code = json.laods(messages[-1].content)
-  '''
-   Here import the module that is inside docker_agent folder to use that function to execute the script files saved in the special folder there.
-   check the code again of that function to recognize the string "agent_code_execute_in_docker_" startwith() maybe and start the agent job. 
-   There is a log file that will have the results and can be used by next agent to check if everything went well or if we nned to go to another node and checl retries again
-  '''
-  retry_code_execution = int(os.getnev("RETRY_CODE_EXECUTION"))
-  '''
-   to be done
-  '''
+  #valid_code = json.laods(messages[-1].content) # maybe we are not going to use that but the saved files having the codes so that we can use the docker function
+
+  # track reties
+  retry_code_execution = int(os.getenv("RETRY_CODE_EXECUTION"))
+  print("RETRY CODE EXECUTION: ", retry_code_execution)
+  if retry_doc_execution == 0:
+    state["messages"].append({"role": "system", "content": "All retries have been consummed, failed to execute code or stopped at code execution"})
+    return "error_handler"
+
+  # vars that will be sent to next agent for analysis of code execution
+  stdout_list_dict = []
+  stderr_list_dict = []
+  exception_error_log_list_dict = []
+
+  if retry_code_execution > 0:
+    # returns a tupel Tuple[stdout, stderr] , scripts present at: ./docker_agent/agents_scripts/{script_path}
+    agents_scripts_dir = os.getenv("AGENTS_SCRIPTS_FOLDER")
+    for agent_script_file_name in os.lisdir(agents_scripts_dir):
+      if agent_script_file_name.startwith("agent_code_execute_in_docker_"):
+        print("Script file name: ", agent_script_file_name)
+        # use splitting to have the agent name which is part of the file name when created initally `agent_code_execute_in_docker_{llm}_{count}`
+        llm_name, count = agent_script_file_name.split("_")[-2].strip(), agent_script_file_name.split("_")[-1].strip()
+        try:
+          # returns a Tuple[stdout, sdterr]
+          stdout, stderr = run_script_in_docker(f"{count}_{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}")
+          if stdout:
+            stdout_list.append({
+              "script_file_path": f"{agents_scripts_dir}/{agent_script_file_name}",
+              "llm_script_origin": llm_name,
+              "output": f"success:{stdout}",  
+            })
+          if stderr:
+            stderr_list.append({
+              "script_file_path": f"{agents_scripts_dir}/{agent_script_file_name}",
+              "llm_script_origin": llm_name,
+              "output": f"error:{stderr}",  
+            })
+        except Exception as e:
+          # here make sure that the app doesn't stop but just manage the error to be stored and fowarded
+          error_log_dict.append({
+            "script_file_path": f"{agents_scripts_dir}/{agent_script_file_name}",
+            "llm_script_origin": llm_name,
+            "output": f"exception:An error occured while trying to execute code in docker sandbox:{e}",
+          })
+
+  # decrease the retry value
+  retry_code_execution -= 1
+  set_key(".var.env", "RETRY_CODE_EXECUTION", str(retry_code_execution))
+  load_dotenv(dotenv_path=".vars.env", override=True)
+
+  # send the results to next node
+  return {"messages": [{"role": "ai", "content": json.dumps({"stdout": stdout_list_dict, "stderr": stderr_list_dict, "exception": exception_error_log_list_dict})}]}   
 
 
 # CONDITIONAL EDGES FUNCTIONS
 
+# after doc evaluation and judge
 def rewrite_documentation_or_execute(state: MessagesState):
   # this is the jodge agent message decision
   messages = state["messages"]
@@ -354,17 +401,16 @@ def rewrite_documentation_or_execute(state: MessagesState):
   # we check retries are not null
   load_dotenv(dotenv_path=".vars.env", override=True)
   retry_doc_validation = int(os.getenv("RETRY_DOC_VALIDATION"))
-  
+  print("RETRY DOC VALIDATION: ", retry_doc_validation)
   if retry_doc_validation == 0:
-    
-    # decrease the retry value
-    retry_doc_validation -= 1
-    set_key(".var.env", "RETRY_DOC_VALIDATION", str(retry_doc_validation))
-    load_dotenv(dotenv_path=".vars.env", override=True)
-    
     state["messages"].append({"role": "system", "content": "All retries have been consummed, failed to rewrite documentation"})
     return "error_handler"
   
+  # decrease the retry value
+  retry_doc_validation -= 1
+  set_key(".var.env", "RETRY_DOC_VALIDATION", str(retry_doc_validation))
+  load_dotenv(dotenv_path=".vars.env", override=True)
+
   if "success" in decision:
     return ["llama_3_8b_script_creator", "llama_3_70b_script_creator", "gemma_3_7b_script_creator"] # those nodes will run in parallel
   # this one loops back up to recreate initial documentation by searching online
@@ -376,22 +422,26 @@ def rewrite_documentation_or_execute(state: MessagesState):
   else:
     return "error_handler"
 
-
-def rewrite_or_execute(state: MessagesState):
+# after code evaluator
+def rewrite_or_execute_decision(state: MessagesState):
   messages = state["messages"]
   # we receive a DICT[LIST[DICT]]
   evaluations =  json.loads(messages[-1].content)
   print("EVALUATIONS in conditional edge: ", evaluations, type(evalauations))
-  
+
+  load_dotenv(dotenv_path=".vars.env", override=True)
+  retry_code_validation = int(os.getenv("RETRY_CODE_VALIDATION"))
+  print("RETRY CODE VALIDATION: ", retry_code_validation)
   # forward try/except error to node 'error_handler'
-  if "error" in evaluations:
+  if "error" in evaluations or retry_code_validation == 0:
+    if retry_code_validation == 0:
+      state["messages"].append({"role": "system", "content": "All retries have been consummed, failed to validate documentation"})
+    if "error" in evaluations:
+      state["messages"].append({"role": "system", "content": f"error present in doc evaluation: {evaluations}"})
     return "error_handler"
   
   valid_code = evaluations["valid"]
   invalid_code = evaluations["invalid"]
-  
-  load_dotenv(dotenv_path=".vars.env", override=True)
-  retry_doc_validation = int(os.getenv("RETRY_CODE_VALIDATION"))
   
   # if no valid code we will check retries and go back to the coding nodes
   if not valid_code and retry_code_validation > 0:
@@ -403,25 +453,58 @@ def rewrite_or_execute(state: MessagesState):
     
     return ["llama_3_8b_script_creator", "llama_3_70b_script_creator", "gemma_3_7b_script_creator"]
    
-   if valid_code:
-     # we loop over the valid code and save those to files that will be executed in next graphm we might need to put those in a folder nested inside the docker stuff
-     for elem in valid_code:
-       count = 0
-       for llm, script in elem:
-         count += 1
-         with open(f"./docker_agent/agents_scripts/agent_code_execute_in_docker_{llm}_{count}", "w", encoding="utf-8") as llm_script:
-           llm_script.write("#!/usr/bin/env python3")
-           llm_script.write(f"# code from: {llm} LLM Agent\n# User initial request: {os.getenv('USER_INITIAL_REQUEST')}\n'''This code have been generated by an LLM Agent'''\n\n")
-           llm_script.write(script)
-     
-     print("All Python script files are ready to be executed!")
-     
-     # append the valid code to state messages LIST[DICT]
-     state["messages"].append({"role": "system", "content": json.dumps(valid_code)})
-     # go to inter_graph_node fo end this script creation graph
-     return "code_execution_node"
-  
+  if valid_code and retry_code_validation > 0:
 
+    # decrease the retry value
+    retry_code_validation -= 1
+    set_key(".var.env", "RETRY_CODE_VALIDATION", str(retry_code_validation))
+    load_dotenv(dotenv_path=".vars.env", override=True)
+
+    # we loop over the valid code and save those to files that will be executed in next graphm we might need to put those in a folder nested inside the docker stuff
+    for elem in valid_code:
+      count = 0
+      for llm, script in elem:
+        count += 1
+        with open(f"./docker_agent/agents_scripts/agent_code_execute_in_docker_{llm}_{count}", "w", encoding="utf-8") as llm_script:
+          llm_script.write("#!/usr/bin/env python3")
+          llm_script.write(f"# code from: {llm} LLM Agent\n# User initial request: {os.getenv('USER_INITIAL_REQUEST')}\n'''This code have been generated by an LLM Agent'''\n\n")
+          llm_script.write(script)
+     
+    print("All Python script files are ready to be executed!")
+     
+    # append the valid code to state messages LIST[DICT]
+    state["messages"].append({"role": "system", "content": json.dumps(valid_code)})
+    # go to inter_graph_node fo end this script creation graph
+    return "code_execution_node"
+
+# after code execution
+def success_execution_or_retry_or_return_error(state: MessagesState):
+  messages = state["messages"]
+  # unwrap the previous output results of code execution
+  # LIST[DICT] : {"stdout": stdout_list_dict, "stderr": stderr_list_dict, "exception": exception_error_log_list_dict}
+  code_execution_result = json.laod(messages[-1].content)
+
+  # get the results list dicts having keys: script_file_path, llm_script_orign and output, check output if it has success, error or exception in the message
+  # if we have at least one good code execution we want to analyze it with next node and know which code it was, from which llm
+  if code_execution_result["stdout"]:
+    # we have some code that has been executed properly and now want to send to next node that will sort it out in order to decide which code will be rendered to user
+    return "successful_code_execution_management" # to be created
+  
+  # if no code executed well we need to analyze the error or send those errors to a certain node for retry
+  else:
+    # first we handle the stderr we go to a certain node
+    if code_execution_result["stderr"]:
+      # otherwise we check if there is an exception and will return the result error_handler node that will handle the message
+      state["messages"].append({"role": "system", "content": json.dumps(code_execution_result["sdterr"])})
+      return "error_analysis_node" # intermediary node before retry execution node to be created and will check the the log file and the stderr thouroughtly to decide if error_handler node, code rewriting again which will go to code execution, or documentation rewriting again which will go through all checks and nodes to execute again 
+    else:
+      # json.dumps the exception list of dictionaries and send it to error_handler as last message in the states
+      state["messages"].append({"role": "system", "content": json.dumps(code_execution_result["exception"])})
+      return "error_handler"
+    
+  
+  logs_file_content = 
+ 
 
 # Initialize states
 workflow = StateGraph(MessagesState)
@@ -439,6 +522,9 @@ workflow.add_node("llama_3_8b_script_creator", llama_3_8b_script_creator)
 workflow.add_node("llama_3_70b_script_creator", llama_3_70b_script_creator)
 workflow.add_node("gemma_3_7b_script_creator", gemma_3_7b_script_creator)
 workflow.add_node("code_execution_node", code_execution_node)
+workflow.add_node("successful_code_execution_management", successful_code_execution_management) # need to be created
+workflow.add_node("error_analysis_node", error_analysis_node) # need to be created
+workflow.add_node("report_creation_node", report_creation_node) # need to be created
 workflow.add_node("inter_graph_node", inter_graph_node)
 '''
   - next graph need an agent that will create the requirement.txt file for the code created here 
@@ -468,20 +554,18 @@ workflow.add_edge("llama_3_70b_script_creator", "code_evaluator_and_final_script
 workflow.add_edge("gemma_3_7b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_condition_edge(
   "code_evaluator_and_final_script_writer",
-  rewrite_or_execute
+  rewrite_or_execute_decision
 )
 workflow.add_edge("code_evaluator_and_final_script_writer", "code_execution_node")
 workflow.add_condition_edge(
   "code_execution_node",
-  success_execution_or_retry_or_return_error # to be done
+  success_execution_or_retry_or_return_error
 )
-
-
-
-
-# error handler routes
-workflow.add_edge("documentation_steps_evaluator_and_doc_judge", "error_handler")
-workflow.add_edge("code_evaluator_and_final_script_writer", "error_handler")
+workflow.add_edge("successful_code_execution_management", "report_creation_node") # nodes to be created
+workflow.add_condition_edge(
+  "error_analysis_node", # to be created
+  rewrite_documentation_or_rewrite_code_or_return_error # to be created
+)
 
 # end
 workflow.add_edge("error_handler", END)

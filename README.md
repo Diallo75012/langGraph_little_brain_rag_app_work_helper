@@ -76,4 +76,11 @@ chmod +x setup_cron.sh
 - [x] Find interesting storytelling for use case an interesting use case
 - [x] Test last graph `report creation` and `retrieval` workflow by commenting out the rest and putting entry dummy values to see how the report comes out, we can create keys of hash of query to test retrieval also and returned report.
 - [x] draw for the video the diagram easy to understand
+- [ ] check the `next` just before this one
+- [ ] add langfuse
+- [ ] make the nodes and conditional edges after code execution conditional edge
+- [ ] make all structured outputs needed
+- [ ] put all hard coded prompts to the prompt file and import those
+
+
 

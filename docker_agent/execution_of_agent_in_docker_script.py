@@ -9,38 +9,38 @@ from typing import Tuple
 
 import subprocess
 
-def run_script_in_docker(dockerfile_name_to_run_script: str, agent_script_file_name: str = os.getenv("AGENT_CODE_CREATED_FILE")) -> Tuple[str, str]:
+def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_file_path: str) -> Tuple[str, str]:
     """
       Will copy agent created Python script to build the Dockerfile with it to execute the script in a docker sandbox for secure code execution.
       Creates Dockerfile, builds it and runs the container `sandbox-python`
       When the code execution is done, it deletes everything and stores code execution result in a Tuple (stdout, stderr)
       
       Parameters:
-      dockerfile_name_to_run_script str: name of the dockerfile
-      agent_script_file_name str: the name of the script created by the agent
+      name_of_dockerfile_to_run_script str: name of the dockerfile
+      agent_script_file_path str: the name of the script created by the agent
       
       Output:
       stdout, stderr Tuple[str, str]:
     """
 
     # Write the script content to a file if needed otherwise just copy the files in the docker file and make agent write those files in this same folder
-    #with open("agent_created_script_to_execute_in_docker.py", "w", encoding="utf-8") as going_to_docker_script_file, open(agent_script_file_name, "r", encoding="utf-8") as script_content:
+    #with open("agent_created_script_to_execute_in_docker.py", "w", encoding="utf-8") as going_to_docker_script_file, open(agent_script_file_path, "r", encoding="utf-8") as script_content:
         #going_to_docker_script_file.write(script_content.read())
 
     # Create the dockerfile for the agent to run the script inside docker
-    with open(dockerfile_name_to_run_script, "w", encoding="utf-8") as docker_file:
+    with open(name_of_dockerfile_to_run_script, "w", encoding="utf-8") as docker_file:
         docker_file.write("# Docker fly created on the fly to execute code in docker by agents.\n")
         docker_file.write("FROM python:3.9-slim\n")
         docker_file.write("COPY sanbox_requirements.txt .\n")
         docker_file.write("RUN pip install --no-cache-dir -r sandbox_requirements.txt\n")
-        docker_file.write(f"COPY {agent_script_file_name} /app/{agent_script_file_name}\n")
+        docker_file.write(f"COPY {agent_script_file_path} /app/{agent_script_file_path}\n")
         docker_file.write("COPY .sandbox.env /app/.sandbox.env\n")
         docker_file.write("WORKDIR /app\n")
-        docker_file.write('CMD ["python", "{agent_script_file_name}"]')
+        docker_file.write('CMD ["python", "{agent_script_file_path}"]')
 
     try:
         # Build the Docker image
-        build_command = ['docker', 'build', '-t', 'sandbox-python', '-f', f'{dockerfile_name_to_run_script}', '.']
+        build_command = ['docker', 'build', '-t', 'sandbox-python', '-f', f'{name_of_dockerfile_to_run_script}', '.']
         subprocess.run(build_command, check=True)
 
         # Run the Docker container and capture the output
