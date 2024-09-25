@@ -103,7 +103,7 @@ def structured_output_for_agent_code_evaluator(structured_class: CodeScriptEvalu
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
   response = prompt_and_model.invoke({"query": query})
   response_dict = { 
     "VALIDITY": response.decision,
@@ -111,7 +111,97 @@ def structured_output_for_agent_code_evaluator(structured_class: CodeScriptEvalu
   }
   return response_dict
 
+### CHOOSE CODE BEST CODE AMONG SEVERAL CODE SNIPPETS
+# structured output class to choose best code
+class CodeComparison(BaseModel):
+    """Compares Python scripts to decide which one is the best if we had to choose only one of those."""
+    name: str = Field(default="", description="The name of the code that you have selected based on how that script have been named.")
+    reason: str = Field(default="", description="Tell reason why you chose that llm code among the different code snippets analyzed.")
 
+
+# function for report generation structured output 
+def structured_output_for_agent_code_comparator_choice(structured_class: CodeComparison, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "LLM_NAME": response.name,
+    "REASON": response.reason,
+  }
+  return response_dict
+
+### CREATE REQUIREMENTS.TXT
+# structured output class to create requirements.txt
+class CodeRequirements(BaseModel):
+    """Analyze Python script to determine what should be in a corresponding requirements.txt file."""
+    requirements: str = Field(default="", description="A markdown representation of what should be content of the code corresponding requirements.txt file content, with right versions and format of a requirements.txt file content.")
+    needed: str = Field(default="", description="Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file.")
+
+
+
+# function for report generation structured output 
+def structured_output_for_create_requirements_for_code(structured_class: CodeRequirements, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "requirements": response.requirements,
+    "NEEDED": response.needed,
+  }
+  return response_dict
+
+
+### ANALYZE CODE EXECUTION STDERR ERRORS
+# structured output class to analyze error after code execution in docker
+class CodeErrorAnalyzis(BaseModel):
+    """Analyze Python script, user query, requirements.txt file if any and error message from code execution to come up with new markdown Python script with corresponding requirements.txt only if needed."""
+    requirements: str = Field(default="", description="A markdown requirements.txt content corresponding to new Python script only if needed. Or a correction of the previous requirements.txt if error comes from it.")
+    script: str = Field(default="", description="New Python script that addresses the error in markdown format or the previous script if the error wasn't coming from the code but from the requirements.txt content.")
+    needed: str = Field(default="", description="Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file.")
+
+
+
+# function for report generation structured output 
+def structured_output_for_error_analysis_node(structured_class: CodeErrorAnalyzis, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "requirements": response.requirements,
+    "script": response.script,
+    "needed": response.needed,
+  }
+  return response_dict
 
 '''
 if __name__ == "__main__":

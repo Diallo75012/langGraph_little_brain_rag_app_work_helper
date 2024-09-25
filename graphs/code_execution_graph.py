@@ -18,11 +18,21 @@ from structured_output.structured_output import (
   # class for script quality evaluation
   CodeScriptEvaluation,
   # function for script evaluation
-  structured_output_for_agent_code_evaluator
+  structured_output_for_agent_code_evaluator,
+  # code comparator class
+  CodeComparison,
+  # function to compare and choose one script only
+  structured_output_for_agent_code_comparator_choice,
+  # class for requirements.txt creation
+  CodeRequirements,
+  # function to create the requriements.txt
+  structured_output_for_create_requirements_for_code
 )
 from prompts.prompts import (
   structured_outpout_report_prompt,
-  code_evaluator_and_final_script_writer_prompt
+  code_evaluator_and_final_script_writer_prompt,
+  choose_code_to_execute_node_if_many_prompt,
+  create_requirements_for_code_prompt
 )
 from typing import Dict, List, Any, Optional, Union
 # Prompts LAngchain and Custom
@@ -106,13 +116,7 @@ def inter_graph_node(state: MessagesState):
   # get last message
   messages = state['messages']
   last_message = messages[-1].content
-  print("Last Message: ", last_message)
-  
-  # save parquet file path to .var env file
-  set_key(".vars.env", "PARQUET_FILE_PATH", last_message)
-  load_dotenv(dotenv_path=".vars.env", override=True)
-
-  return {"messages": [{"role": "ai", "content": last_message}]}
+  return {"messages": [{"role": "system", "content": last_message}]}
 
 # api selection
 def tool_api_choose_agent(state: MessagesState):
@@ -179,7 +183,7 @@ def documentation_writer(apis: Dict[str,str] = apis, state: MessagesState):
   result = chain.invoke({"query": f"User wanted a Python script in markdown to call an API: {user_initial_query}. Our agent chosen this api to satisfy user request: {api_choice}; and found some documentation online: <doc>{documentation_found_online}</doc>. Can you write in markdown format detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <api links>{apis}</api links>. Calling and returning the formatted response. We need instruction like documentation so that llm agent called will understand and provide the code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it in markdown format."})
   
   # write the documentation to a file
-  with open(os.getenv("CODE_DOCUMENTATION_FILE_PAH"), "w", encoding="utf-8") as code_doc:
+  with open(os.getenv("CODE_DOCUMENTATION_FILE_PATH"), "w", encoding="utf-8") as code_doc:
     code_doc.write("""
       '''
       This file contains the documentation in how to write a mardown Python script to make API to satisfy user request.
@@ -261,7 +265,7 @@ def documentation_steps_evaluator_and_doc_judge(state: MessagesState):
   except Exception as e:
     return {"messages": [{"role": "ai", "content": json.dumps({"error":e})}]} 
 
-def code_evaluator_and_final_script_writer(state: MessagesState):
+def code_evaluator_and_final_script_writer(state: MessagesState, evaluator_class = CodeScriptEvaluation):
     """
     This node receives code from different LLMs, evaluates if it's valid by calling another LLM, 
     and returns 'YES' or 'NO' for validation using structured outputs.
@@ -288,7 +292,7 @@ def code_evaluator_and_final_script_writer(state: MessagesState):
     messages = state['messages']
     
     # dictionary to have code linked to each llm for easier parsing and allocation and looping through it and formatting answers
-    dict_llm_codes = {}
+    dict_llm_codes = {} # name_llm: code_of_that_llm
     
     # Assume the last three messages are the code outputs
     codes = [ messages[-1].content, messages[-2].content, messages[-3].content]
@@ -313,7 +317,7 @@ def code_evaluator_and_final_script_writer(state: MessagesState):
       # we need to fill this template to create the query for this code evaluation task
       query = prompt_creation(code_evaluator_and_final_script_writer_prompt["human"], user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis_links, code=v)
       try:
-        evaluation = structured_output_for_agent_code_evaluator(CodeScriptEvaluation, query, code_evaluator_and_final_script_writer_prompt["system"]["template"])
+        evaluation = structured_output_for_agent_code_evaluator(evaluator_class, query, code_evaluator_and_final_script_writer_prompt["system"]["template"])
         print("CODE EVALUATION: ", evaluation)
         """
         { 
@@ -330,12 +334,82 @@ def code_evaluator_and_final_script_writer(state: MessagesState):
     
     return {"messages": [{"role": "ai", "content": json.dumps({"valid": llm_code_valid_responses_list_dict, "invalid": llm_code_invalid_responses_list_dict})}]}
 
+# will create requirments.txt
+def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_class = CodeComparison):
+  # get all the valided codes
+  messages = state["messages"]
+  valid_code: List[Dict] = json.loads(messages[-1].content) # name_llm: code_of_that_llm
+  
+  # this mean that if there is only one code snippet int he List[Dict] of valid codes this mean that we have just one script we don't need to compare code
+  if len(valid_code) < 2:
+    print("Len of valid_code samller than 2, so no need to compare code, passing to next node to create requirements.txt")
+    # we just pass to next node the serialized List[Dict[llm_name, script]] 
+    return {"messages": [{"role": "ai", "content": json.dumps({"one_script_only": messages[-1].content})}]}
+  # will regroup all the scripts to be compared
+  FORMATTED_CODES: str = ""
+  for k, v in valid_code.items():
+    FORMATED_CODES += f"'''Script to compare'''\n# Script name: {k}\n# Code of {k}:\n{v}\n\n\n"
+
+  # use structured output to decide on the name of the file that will be chosen for code execution. returns Dict[name, reason]
+  query = prompt_creation(choose_code_to_execute_node_if_many_prompt["human"], user_initial_query=user_initial_query, code=FORMATTED_CODES)
+  try:
+    choice = structured_output_for_agent_code_comparator_choice(comparator_choice_class, query, choose_code_to_execute_node_if_many_prompt["system"]["template"])
+    llm_name = choice["LLM_NAME"]
+    reason = chocie["REASON"]
+    print("LLM SCRIPT CHOICE AND REASON: ", llm_name, reason )
+    return {"messages": [{"role": "ai", "content": json.dumps({"success": {"llm_name": llm_name, "reason": reason}})}]}
+  except Exception as e:
+    return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to compare LLM codes aand choose one:{e}"})}]}
+
+# will create requirments.txt
+def create_requirements_for_code(state: MessagesState, requirements_creation_class = CodeRequirements):
+  # get the valided code
+  messages = state["messages"]
+  llm_name = json.loads(messages)["llm_name"]
+
+  # use llm_name to get the corresponding script
+  scripts_folder = os.getenv("AGENTS_SCRIPTS_FOLDER")
+  scripts_list_in_folder = os.listdir(scripts_folder)
+  for script in scripts_list_in_folder:
+    if script.startswith(f"agent_code_execute_in_docker_{llm_name}")
+      # we get the script code that will be injected in the human prompt
+      script_to_create_requirement_for = script
+
+  # use structured output to get the requirements.txt
+  query = prompt_creation(create_requirements_for_code_prompt["human"], user_initial_query=user_initial_query, code=script_to_create_requirement_for)
+  try:
+    requirements_response = structured_output_for_create_requirements_for_code(requirements_creation_class, query, create_requirements_for_code_prompt["system"]["template"])
+    
+    # responses parsing
+    requirements_txt_content = requirements_response["REQUIREMENTS"]
+    requirements_needed_or_not = chocie["NEEDED"]
+    print("REQUIREMENTS AND IF NEEDED OR NOT: ", requirements_txt_content, requirements_needed_or_not)
+    
+    # check if llm believed that code needs a requirements.txt file or not
+    if "yes" in requirements_needed_or_not.lower().strip():
+      # create the requirements.txt file
+      sandbox_requirement_file = f"{script_folder}/{llm_name}.txt"
+      with open(sandbox_requirement_file, "w", encoding="utf-8") as req:
+         req.write(f"# This requirements for the code generated by {llm_name}\n")
+         req.write(requirements_txt_content.strip())
+    # return with name of the requirement file in the states
+    return {"messages": [{"role": "ai", "content": json.dumps({"success": {"requirements": sandbox_requirement_file, "llm_name": llm_name}})}]}
+  except Exception as e:
+    return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to check if code needs requirements.txt file created or not:{e}"})}]}
+
 # will execute code in docker sandbox
 def code_execution_node(state: StateMessages):
-  #messages = state["messages"]
-  # get the valid code LIST[DICT[llm, script]]
-  #valid_code = json.laods(messages[-1].content) # maybe we are not going to use that but the saved files having the codes so that we can use the docker function
-
+  stdout_list_dict = []
+  stderr_list_dict = []
+  exception_error_log_list_dict = []
+  
+  messages = state["messages"]
+  last_message = json.loads(messages[-1].content)
+  
+  # get requirements file name and llm name
+  requirements_file_name = last_messages["requirements"]
+  llm_name = last_messages["llm_name"]
+  
   # track reties
   retry_code_execution = int(os.getenv("RETRY_CODE_EXECUTION"))
   print("RETRY CODE EXECUTION: ", retry_code_execution)
@@ -343,22 +417,15 @@ def code_execution_node(state: StateMessages):
     state["messages"].append({"role": "system", "content": "All retries have been consummed, failed to execute code or stopped at code execution"})
     return "error_handler"
 
-  # vars that will be sent to next agent for analysis of code execution
-  stdout_list_dict = []
-  stderr_list_dict = []
-  exception_error_log_list_dict = []
-
   if retry_code_execution > 0:
     # returns a tupel Tuple[stdout, stderr] , scripts present at: ./docker_agent/agents_scripts/{script_path}
     agents_scripts_dir = os.getenv("AGENTS_SCRIPTS_FOLDER")
     for agent_script_file_name in os.lisdir(agents_scripts_dir):
-      if agent_script_file_name.startwith("agent_code_execute_in_docker_"):
+      if agent_script_file_name.startwith(f"agent_code_execute_in_docker_{llm_name}"):
         print("Script file name: ", agent_script_file_name)
-        # use splitting to have the agent name which is part of the file name when created initally `agent_code_execute_in_docker_{llm}_{count}`
-        llm_name, count = agent_script_file_name.split("_")[-2].strip(), agent_script_file_name.split("_")[-1].strip()
         try:
-          # returns a Tuple[stdout, sdterr]
-          stdout, stderr = run_script_in_docker(f"{count}_{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}")
+          # returns a Tuple[stdout, stderr]
+          stdout, stderr = run_script_in_docker(f"{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}", f"{agents_scripts_dir}/{requirements_name}")
           if stdout:
             stdout_list.append({
               "script_file_path": f"{agents_scripts_dir}/{agent_script_file_name}",
@@ -387,8 +454,39 @@ def code_execution_node(state: StateMessages):
   # send the results to next node
   return {"messages": [{"role": "ai", "content": json.dumps({"stdout": stdout_list_dict, "stderr": stderr_list_dict, "exception": exception_error_log_list_dict})}]}   
 
+# code has successfully being executed
+def successful_code_execution_management(state: MessagesState):
+  messages = state["messages"]
+  stdout = json.loads(messages[-1].content)["stdout"]
+  # create a report from here so save this successful graph code execution to an env var for business logic side to get it and forward to report_creation node
+  sek_key(".vars.env", "CODE_EXECUTION_GRAPH_RESULT", json.dumps({"success": stdout}))
+  load_dotenv(dotenv_path=".vars.env", override=True)
+  return {"messages": [{"role": "system", "content": json.dumps({"success": stdout})}]}
 
-# CONDITIONAL EDGES FUNCTIONS
+# will analyse error returned by code execution
+def error_analysis_node(state: MessagesState):
+  messages = state["messages"]
+  stderr = json.loads(messages[-1].content)["stderr"]
+  # get the different values
+  error_message = stderr["output"]
+  code = stderr["script_file_path"]
+  llm_name = stderr["llm_script_origin"]
+  for script in os.listdir(os.getenv("AGENTS_SCRIPT_FOLDER")):
+    if script.endswith(".txt") and script.startswith("llm_name"):
+      requirements_file = script
+  # ask llm to check the error compared to the user initial query, the api chosen, the code and the requirements.txt and use structured output to provide new code, new requirements.txt and return to execute code with those new file, therefore need to create an explicative name for those new files and save those names to state to keep track
+  query = prompt_creation(error_analysis_node_prompt["human"], error=error_message, code=code, requirements=requirements_file, dockerfile=<>)
+  '''
+   don't forget that you also need to provide the dockerfile and use the same file names in formatting when rewriting those files so that the execution code node will just run the same file names but which have been overwritten
+  '''
+  try:
+    code_analysis_response = structured_output_for_create_requirements_for_code(requirements_creation_class, query, error_analysis_node_prompt["system"]["template"])
+
+
+
+ 
+
+######   CONDITIONAL EDGES FUNCTIONS
 
 # after doc evaluation and judge
 def rewrite_documentation_or_execute(state: MessagesState):
@@ -423,7 +521,7 @@ def rewrite_documentation_or_execute(state: MessagesState):
     return "error_handler"
 
 # after code evaluator
-def rewrite_or_execute_decision(state: MessagesState):
+def rewrite_or_create_requirements_decision(state: MessagesState):
   messages = state["messages"]
   # we receive a DICT[LIST[DICT]]
   evaluations =  json.loads(messages[-1].content)
@@ -465,7 +563,7 @@ def rewrite_or_execute_decision(state: MessagesState):
       count = 0
       for llm, script in elem:
         count += 1
-        with open(f"./docker_agent/agents_scripts/agent_code_execute_in_docker_{llm}_{count}", "w", encoding="utf-8") as llm_script:
+        with open(f"./docker_agent/agents_scripts/agent_code_execute_in_docker_{llm}_{count}.py", "w", encoding="utf-8") as llm_script:
           llm_script.write("#!/usr/bin/env python3")
           llm_script.write(f"# code from: {llm} LLM Agent\n# User initial request: {os.getenv('USER_INITIAL_REQUEST')}\n'''This code have been generated by an LLM Agent'''\n\n")
           llm_script.write(script)
@@ -474,8 +572,9 @@ def rewrite_or_execute_decision(state: MessagesState):
      
     # append the valid code to state messages LIST[DICT]
     state["messages"].append({"role": "system", "content": json.dumps(valid_code)})
-    # go to inter_graph_node fo end this script creation graph
-    return "code_execution_node"
+    
+    # go to create requirement node
+    return "create_requirements_for_code"
 
 # after code execution
 def success_execution_or_retry_or_return_error(state: MessagesState):
@@ -495,15 +594,49 @@ def success_execution_or_retry_or_return_error(state: MessagesState):
     # first we handle the stderr we go to a certain node
     if code_execution_result["stderr"]:
       # otherwise we check if there is an exception and will return the result error_handler node that will handle the message
-      state["messages"].append({"role": "system", "content": json.dumps(code_execution_result["sdterr"])})
+      state["messages"].append({"role": "system", "content": json.dumps(code_execution_result["stderr"])})
       return "error_analysis_node" # intermediary node before retry execution node to be created and will check the the log file and the stderr thouroughtly to decide if error_handler node, code rewriting again which will go to code execution, or documentation rewriting again which will go through all checks and nodes to execute again 
     else:
       # json.dumps the exception list of dictionaries and send it to error_handler as last message in the states
       state["messages"].append({"role": "system", "content": json.dumps(code_execution_result["exception"])})
       return "error_handler"
-    
+
+# after choice of the code snippet that will be used to create requirement.txt from and execute in docker
+def create_requirements_or_error(state: MessagesState):
+  messages = state["messages"]
+  outcome = json.loads(messages[-1].content)
   
-  logs_file_content = 
+  if "success" in outcome: # Dict[Dict[name, reason]]
+    # update state with the name of the llm only that will be passed to next node so it can find that file code and execute it in docker
+    state["messages"].append({"role": "system", "content": json.dumps({"llm_name": outcome["success"]["llm_name"]})})
+    # go to code execution node
+    return "create_requirements_for_code"
+  
+  elif "one_script_only" in outcome: # Dict[name, script]
+    # # update state with the name of the llm only that will be passed to next node so it can find that file code and execute it in docker
+    for  k, _ in outcome.items():
+      llm_name = k
+    state["messages"].append({"role": "system", "content": json.dumps({"llm_name": llm_name})})
+    # go to code execution node
+    return "create_requirements_for_code"
+  
+  else 
+    if "error" in outcome: # str
+      # go to error_handler
+      return "error_handler"
+    return "error_handler"
+
+# execute code or return error conditional edge
+def execute_code_or_error(state: MessagesState):
+  messages = ["messages"]
+  last_message = json.loads(messages[-1].content)
+  
+  if "success" in last_message:
+    return "code_execution_node"
+  
+  elif "error" in last_message:
+    return "error_handler"
+  return "error_handler"
  
 
 # Initialize states
@@ -521,6 +654,9 @@ workflow,add_node("documentation_steps_evaluator_and_doc_judge", documentation_s
 workflow.add_node("llama_3_8b_script_creator", llama_3_8b_script_creator)
 workflow.add_node("llama_3_70b_script_creator", llama_3_70b_script_creator)
 workflow.add_node("gemma_3_7b_script_creator", gemma_3_7b_script_creator)
+workflow.add_node("code_evaluator_and_final_script_writer", code_evaluator_and_final_script_writer)
+workflow.add_node("choose_code_to_execute_node_if_many", choose_code_to_execute_node_if_many)
+workflow.add_node("create_requirements_for_code", create_requirements_for_code)
 workflow.add_node("code_execution_node", code_execution_node)
 workflow.add_node("successful_code_execution_management", successful_code_execution_management) # need to be created
 workflow.add_node("error_analysis_node", error_analysis_node) # need to be created
@@ -554,19 +690,25 @@ workflow.add_edge("llama_3_70b_script_creator", "code_evaluator_and_final_script
 workflow.add_edge("gemma_3_7b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_condition_edge(
   "code_evaluator_and_final_script_writer",
-  rewrite_or_execute_decision
+  rewrite_or_create_requirements_decision
 )
-workflow.add_edge("code_evaluator_and_final_script_writer", "code_execution_node")
+workflow.add_conditional_edge(
+  "choose_code_to_execute_node_if_many",
+  create_requirements_or_error
+)
+workflow.add_conditional_edge(
+  "create_requirements_for_code",
+  execute_code_or_error
+)
 workflow.add_condition_edge(
   "code_execution_node",
   success_execution_or_retry_or_return_error
 )
-workflow.add_edge("successful_code_execution_management", "report_creation_node") # nodes to be created
+workflow.add_edge("successful_code_execution_management", "inter_graph_node")
 workflow.add_condition_edge(
   "error_analysis_node", # to be created
   rewrite_documentation_or_rewrite_code_or_return_error # to be created
 )
-
 # end
 workflow.add_edge("error_handler", END)
 workflow.add_edge("inter_graph_node", END)

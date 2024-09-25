@@ -9,7 +9,7 @@ from typing import Tuple
 
 import subprocess
 
-def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_file_path: str) -> Tuple[str, str]:
+def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_file_path: str, requirements_script_file_path: str = "") -> Tuple[str, str]:
     """
       Will copy agent created Python script to build the Dockerfile with it to execute the script in a docker sandbox for secure code execution.
       Creates Dockerfile, builds it and runs the container `sandbox-python`
@@ -31,10 +31,12 @@ def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_fil
     with open(name_of_dockerfile_to_run_script, "w", encoding="utf-8") as docker_file:
         docker_file.write("# Docker fly created on the fly to execute code in docker by agents.\n")
         docker_file.write("FROM python:3.9-slim\n")
-        docker_file.write("COPY sanbox_requirements.txt .\n")
-        docker_file.write("RUN pip install --no-cache-dir -r sandbox_requirements.txt\n")
+        if requirements_script_file_path:
+          docker_file.write(f"COPY {requirements_script_file_path} .\n")
+          docker_file.write(f"RUN pip install --no-cache-dir -r {requirements_script_file_path}\n")
         docker_file.write(f"COPY {agent_script_file_path} /app/{agent_script_file_path}\n")
-        docker_file.write("COPY .sandbox.env /app/.sandbox.env\n")
+        # if env vars in workflow add this line and make agent creating it
+        # docker_file.write("COPY .sandbox.env /app/.sandbox.env\n")
         docker_file.write("WORKDIR /app\n")
         docker_file.write('CMD ["python", "{agent_script_file_path}"]')
 

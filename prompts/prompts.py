@@ -176,7 +176,7 @@ rewrite_or_create_api_code_script_prompt = {
   },
 }
 
-# prompt for code script evaluation when receiving code from different nodes
+# prompt for code script evaluation when receiving code from different nodes. We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 code_evaluator_and_final_script_writer_prompt = {
   "system": {
     "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is.\n{format_instructions}\n{query}\n", 
@@ -192,5 +192,50 @@ code_evaluator_and_final_script_writer_prompt = {
   },
 }
 
+# prompt for code comparator that will choose only one script before notifying requirements.txt creator node.  We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
+choose_code_to_execute_node_if_many_prompt = {
+  "system": {
+    "template": "You are an expert in Python script code review. You will be presented different Python script names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what the user want to do.\n{format_instructions}\n{query}\n", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "We want to know which script fulfills the best initial intent which is: {user_initial_query}. Using markdown to answer analyze those codes having their name and corresponding codes:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.", 
+    "input_variables": {"user_inital_query": "", "code": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
 
+# prompt to create requirements.txt file content
+create_requirements_for_code_prompt = {
+  "system": {
+    "template": "You are an expert in Python script code review and requirements.txt file. You will be presented different Python script and will decide if it needs a requirements.txt file. If it need one you will provide the content of the corresponding requirements.txt in markdown format.\n{format_instructions}\n{query}\n", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "Can you please check if that code requires any requirements.txt, if yes, provide the content of that file using markdown:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.", 
+    "input_variables": {"code": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
 
+# prompt to analyze code execution stderr
+error_analysis_node_prompt = {
+  "system": {
+    "template": "You are an expert in Python script code execution error analysis. You will be presented an error message from Python script execution, with the corresponding script and the requirements.txt file content. You will check if the error come from the script or the requirements or both. Maybe it doesn't need any requirements.txt content as code can be natively executed by python 3.9 slim docker container. If it needs new script or requirements or both, you will provide the content of the corresponding in markdown format.\n{format_instructions}\n{query}\n", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "Can you please check this error message coming from Python script execution: {error}.\nHere is the code:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>. And here is the requirements.txt file content: <REQUIREMENTS TO ANALYZE>{requirementss}</REQUIREMENTS TO ANALYZE>", 
+    "input_variables": {"error": "", "code": "", "requirements": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
