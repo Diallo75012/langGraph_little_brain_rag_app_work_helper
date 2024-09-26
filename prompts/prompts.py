@@ -159,6 +159,70 @@ structured_outpout_report_prompt = {
   },
 }
 
+# prompt for user input analysis
+# prompt for documentation_writer that will be using structured output to have a mardown formatted documentation
+get_user_input_prompt = {
+  "system": {
+    "template": "You are an expert in user query analysis. You identify if there any need from the user to create some Python script code or to only create some coding documentation or nothing like code generation or documentation is needed. You use markdown for to answer.\n{format_instructions}\n{query}\n", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "User query is: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Analyze the query to see if we need to generate Python script code for it or not.  Or if we need ONLY documentation created or not. Or if we don't need any code nor documentation as it is just a general question not needing any code generation or code documentation.", 
+    "input_variables": {"user_inital_query": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+
+# prompt find_documentation_online_agent
+find_documentation_online_agent_prompt = {
+  "system": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "We have to find online how to make a Python script to make a simple API call and get the response in mardown to this: {last_message}. Here is the different APIs urls that we have: {APIs}. Select just the one corresponding accordingly to user intent: {user_initial_query}. And search how to make a Python script to call that URL and return the response using Python in markdown format.", 
+    "input_variables": {"last_message": "", "APIs": "", "user_initial_query": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+
+# prompt for documentation_writer that will be using structured output to have a mardown formatted documentation
+documentation_writer_prompt = {
+  "system": {
+    "template": "You are an expert in Python code documentation writing and creation. You will analyse information for the required documentation and will understand what user wants. You write instruction like documentation so that LLM agent called will understand and provide the corresponding code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it in markdown format.\n{format_instructions}\n{query}\n", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "I wanted a Python script in markdown to call an API: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Our agent chosen this api to satisfy user request: <API CHOICE>{api_choice}</API CHOICE>; and found some documentation online: <DOCUMENTATION FOUND ONLINE>{documentation_found_online}</DOCUMENTATION FOUND ONLINE>. Can you write in markdown format detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <API LINKS>{apis_links}</API LINKS>.", 
+    "input_variables": {"user_inital_query": "", "apis_links": "", "api_choice": "", "documentation_found_online": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+
+# prompt for parallel llm script creators
+script_creator_prompt = {
+  "system": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "Create a Python script to call the API following the instructions. Make sure that it is in markdown format and have the right indentations and imports.", 
+    "input_variables": {}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
 
 # prompt for judge agent that will evaluate if documentation written by agent need to be rewritten of if it allow for agents to start writting code script based on that document
 rewrite_or_create_api_code_script_prompt = {

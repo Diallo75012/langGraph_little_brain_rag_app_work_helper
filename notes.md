@@ -2973,7 +2973,8 @@ async def execute_parallel_nodes():
 
 
 
-
+# next
+- need to review the flow of the user input after it's conditional edge if the there is no documentaiton needed nor code creation so that it returns to the business logic app and create an answer report. but before that we need to check if there is no links or pdf documents improving the user_input function structured outptut to return the yes or no for pdf identified field and url identified field, in thta case we will just forward to normal other graph flows. if no document we need to create a way to make the report using the report graph with env vars filled approprietely.
 
 
 

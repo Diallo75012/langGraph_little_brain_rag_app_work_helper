@@ -148,6 +148,9 @@ if __name__ == "__main__":
         report_content = report.read()
       print(f"Report content (markdown) present at {os.getenv('REPORT_PATH')}: \n", report_content)
 
+  '''
+  create here condition to get the report graph starting if no code execution is needed in user query and there is no link address or pdf documents
+  '''
 
 
 

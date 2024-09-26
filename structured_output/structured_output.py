@@ -18,7 +18,8 @@ from dotenv import load_dotenv
 # load env vars
 load_dotenv(dotenv_path='.env', override=False)
 
-### REPORT 
+################################################ REPORT GRAPH STRUCTURES OUTPUT ###################################################
+## REPORT 
 # structured classe for report generation
 class ReportAnswerCreationClass(BaseModel):
     """Create a detailed professional report using markdown"""
@@ -52,8 +53,71 @@ def structured_output_for_agent(structured_class: ReportAnswerCreationClass, que
   return response_dict
 
 
+
+##################################### CODE EXECUTION STRUCTURED OUTPUT CLASSES AND FUNCTIONS ##############################################
+### USER INITIAL INPUT NEEDS OR NOT CODE CREATION AND EXECUTION OR JUST DOCUMENTATION
+# structured output class for get_user_input management
+class AnalyseUserInput(BaseModel):
+    """Analyse user query in order to identify if only documentation is needed to be created or if Python script code creation is needed."""
+    code: str = Field(default="NO", description="Say YES if user query needs Python script creation. Otherwise say NO. Answer using markdown")
+    onlydoc: str = Field(default="NO", description="Say YES if user query needs only documentation to be created and NOT Python code script. Otherwise say NO. Answer using markdown.")
+    nothing: str = Field(default="NEEDED", description="If no Python script code nor documentation is needed says 'NOTHING'. Meaning that it is just a simple question that doesn't require code or documentation creation.")
+    
+
+
+# function for report generation structured output 
+def structured_output_for_get_user_input(structured_class: AnalyseUserInput, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure.
+  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "code": response.code,
+    "onlydoc": response.onlydoc,
+    "nothing": response.nothing
+  }
+  print("'structured_output_for_documentation_writer' structured output response:", response_dict)
+  return response_dict
+
+### DOCUMENT WRITER
+# structured output class for documentation writer
+class DocumentionWriter(BaseModel):
+    """Writing Python documentation about how to make API call. Only the instructions is created for another LLM to be able to follow create the wanted scriptand have example."""
+    documentation: str = Field(default="", description="Documentation and guidance for Python script creation in markdown format about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script.")
+
+
+# function for report generation structured output 
+def structured_output_for_documentation_writer(structured_class: DocumentionWriter, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure.
+  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "documentation": response.documentation,
+  }
+  print("'structured_output_for_documentation_writer' structured output response:", response_dict)
+  return response_dict
+
 ### DOCUMENTATION EVALUATION
-# structured output class for code documentation judge
+# structured output class for documentation steps evaluator and doc judge
 class CodeDocumentionEvaluation(BaseModel):
     """Evaluate quality of documentation for code generation created for other LLM agents to be able to generate Python scripts following the those instructions."""
     decision: str = Field(default="", description="Analyse the documentation created instruction and evaluate if it needs to be written again  or if it is validated as good documentation. Answer 'rewrite' to request documentation to be witten again or 'generate' to validate as good documentation for LLM Agent to understand it and generate code easily following those instructions.")
@@ -61,7 +125,7 @@ class CodeDocumentionEvaluation(BaseModel):
     stage: str =  Field(default="", description="if decision is 'rewrite' indicate here which stage need to be done again: 'internet' for internet search to get more information as poorly informed or 'rewrite' for just rewriting the documentation in a better way.")
 
 # function for report generation structured output 
-def structured_output_for_agent_doc_evaluator(structured_class: CodeDocumentionEvaluation, query: str, prompt_template_part: str) -> Dict:
+def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured_class: CodeDocumentionEvaluation, query: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -80,10 +144,11 @@ def structured_output_for_agent_doc_evaluator(structured_class: CodeDocumentionE
     "REASON": response.reason,
     "STAGE": response.stage,
   }
+  print("'structured_output_for_documentation_steps_evaluator_and_doc_judge' structured output response:", response_dict)
   return response_dict
 
 ### CODE EVALUATION
-# structured output class for code documentation judge
+# structured output class for code evaluator and final script writer
 class CodeScriptEvaluation(BaseModel):
     """Evaluate quality of Python script code created to make API call."""
     validity: str = Field(default="", description="Say 'YES' if Python script code is evaluated as been well written, formatted, indented to make API call, otherwise answer 'NO'.")
@@ -91,7 +156,7 @@ class CodeScriptEvaluation(BaseModel):
 
 
 # function for report generation structured output 
-def structured_output_for_agent_code_evaluator(structured_class: CodeScriptEvaluation, query: str, prompt_template_part: str) -> Dict:
+def structured_output_for_code_evaluator_and_final_script_writer(structured_class: CodeScriptEvaluation, query: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -109,6 +174,7 @@ def structured_output_for_agent_code_evaluator(structured_class: CodeScriptEvalu
     "VALIDITY": response.decision,
     "REASON": response.reason,
   }
+  print("'structured_output_for_code_evaluator_and_final_script_writer' structured output response:", response_dict)
   return response_dict
 
 ### CHOOSE CODE BEST CODE AMONG SEVERAL CODE SNIPPETS
@@ -138,6 +204,7 @@ def structured_output_for_agent_code_comparator_choice(structured_class: CodeCom
     "LLM_NAME": response.name,
     "REASON": response.reason,
   }
+  print("'structured_output_for_agent_code_comparator_choice' structured output response:", response_dict)
   return response_dict
 
 ### CREATE REQUIREMENTS.TXT
@@ -166,19 +233,19 @@ def structured_output_for_create_requirements_for_code(structured_class: CodeReq
   response = prompt_and_model.invoke({"query": query})
   response_dict = { 
     "requirements": response.requirements,
-    "NEEDED": response.needed,
+    "needed": response.needed,
   }
+  print("'structured_output_for_create_requirements_for_code' structured output response:", response_dict)
   return response_dict
 
 
 ### ANALYZE CODE EXECUTION STDERR ERRORS
 # structured output class to analyze error after code execution in docker
-class CodeErrorAnalyzis(BaseModel):
+class CodeErrorAnalysis(BaseModel):
     """Analyze Python script, user query, requirements.txt file if any and error message from code execution to come up with new markdown Python script with corresponding requirements.txt only if needed."""
     requirements: str = Field(default="", description="A markdown requirements.txt content corresponding to new Python script only if needed. Or a correction of the previous requirements.txt if error comes from it.")
     script: str = Field(default="", description="New Python script that addresses the error in markdown format or the previous script if the error wasn't coming from the code but from the requirements.txt content.")
     needed: str = Field(default="", description="Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file.")
-
 
 
 # function for report generation structured output 
@@ -201,6 +268,7 @@ def structured_output_for_error_analysis_node(structured_class: CodeErrorAnalyzi
     "script": response.script,
     "needed": response.needed,
   }
+  print("'structured_output_for_error_analysis_node' structured output response:", response_dict)
   return response_dict
 
 '''
