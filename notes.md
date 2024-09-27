@@ -2976,5 +2976,25 @@ async def execute_parallel_nodes():
 # next
 - need to review the flow of the user input after it's conditional edge if the there is no documentaiton needed nor code creation so that it returns to the business logic app and create an answer report. but before that we need to check if there is no links or pdf documents improving the user_input function structured outptut to return the yes or no for pdf identified field and url identified field, in thta case we will just forward to normal other graph flows. if no document we need to create a way to make the report using the report graph with env vars filled approprietely.
 
+'''
+have created more prompts templates, structured outputs for all llm calls, still need to review which llm for which structured outptu as it may need more context length capacity sometimes, have also created conditional edge for user inital request to be analyzed but need to be improved as it exist the graph if no code nor document generation is needed and will start other graphs depending on if there is a link or pdf file in the query....."
+[main aedd52e] have created more prompts templates, structured outputs for all llm calls, still need to review which llm for which structured outptu as it may need more context length capacity sometimes, have also created conditional edge for user inital request to be analyzed but need to be improved as it exist the graph if no code nor document generation is needed and will start other graphs depending on if there is a link or pdf file in the query.....
+
+'''
+
+- graph work fine until after the parallele code generation and then comes up with an error, so fix it and continue debugging and improving until graph finisehd and test all cases with url and more...:
+```bash
+  File "/home/creditizens/langgraph/graphs/code_execution_graph.py", line 391, in code_evaluator_and_final_script_writer
+    dict_llm_codes[llm_name.strip()] == llm_code.strip()
+KeyError: 'gemma_3_7b'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/creditizens/langgraph/app.py", line 77, in <module>
+    raise Exception(f"An error occured while running 'code_execution_flow': {e}")
+Exception: An error occured while running 'code_execution_flow': 'gemma_3_7b'
+```
+
 
 

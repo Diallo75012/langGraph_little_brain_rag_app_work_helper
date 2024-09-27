@@ -1,4 +1,5 @@
 import os
+import json
 # Structured Output First Way
 from langchain.output_parsers import PydanticOutputParser #
 from langchain_core.prompts import PromptTemplate #
@@ -42,7 +43,7 @@ def structured_output_for_agent(structured_class: ReportAnswerCreationClass, que
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
   response = prompt_and_model.invoke({"query": query})
   response_dict = { 
     "TITLE": response.title,
@@ -60,8 +61,9 @@ def structured_output_for_agent(structured_class: ReportAnswerCreationClass, que
 class AnalyseUserInput(BaseModel):
     """Analyse user query in order to identify if only documentation is needed to be created or if Python script code creation is needed."""
     code: str = Field(default="NO", description="Say YES if user query needs Python script creation. Otherwise say NO. Answer using markdown")
-    onlydoc: str = Field(default="NO", description="Say YES if user query needs only documentation to be created and NOT Python code script. Otherwise say NO. Answer using markdown.")
-    nothing: str = Field(default="NEEDED", description="If no Python script code nor documentation is needed says 'NOTHING'. Meaning that it is just a simple question that doesn't require code or documentation creation.")
+    doc: str = Field(default="NO", description="Say YES if user query needs only documentation to be created and NOT Python code script. Otherwise say NO. Answer using markdown.")
+    nothing: str = Field(default="NO", description="Analyze the query, and if no url or pdf have been identified in the query and no Python script code nor documentation is needed to be created say 'YES'. Meaning that it is just a simple question that doesn't require code or documentation creation.")
+    pdforurl: str = Field(default="NO", description="Analyze the query and identify if there is any pdf or url in it. Answer 'YES' to tell that the query have a .pdf file mentioned in it or an url like address.")
     
 
 
@@ -78,25 +80,26 @@ def structured_output_for_get_user_input(structured_class: AnalyseUserInput, que
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
   response = prompt_and_model.invoke({"query": query})
   response_dict = { 
     "code": response.code,
-    "onlydoc": response.onlydoc,
-    "nothing": response.nothing
+    "doc": response.doc,
+    "nothing": response.nothing,
+    "pdforurl": response.pdforurl
   }
-  print("'structured_output_for_documentation_writer' structured output response:", response_dict)
+  print("'structured_output_for_get_user_input' structured output response:", response_dict)
   return response_dict
 
 ### DOCUMENT WRITER
 # structured output class for documentation writer
-class DocumentionWriter(BaseModel):
+class DocumentationWriter(BaseModel):
     """Writing Python documentation about how to make API call. Only the instructions is created for another LLM to be able to follow create the wanted scriptand have example."""
     documentation: str = Field(default="", description="Documentation and guidance for Python script creation in markdown format about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script.")
 
 
 # function for report generation structured output 
-def structured_output_for_documentation_writer(structured_class: DocumentionWriter, query: str, prompt_template_part: str) -> Dict:
+def structured_output_for_documentation_writer(structured_class: DocumentationWriter, query: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -108,24 +111,35 @@ def structured_output_for_documentation_writer(structured_class: DocumentionWrit
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
   response = prompt_and_model.invoke({"query": query})
-  response_dict = { 
-    "documentation": response.documentation,
-  }
-  print("'structured_output_for_documentation_writer' structured output response:", response_dict)
-  return response_dict
+  print("REEEEEEESSSSPONSEEEEEEEEEEEEEEE:: ", response)
+  try:
+    response_dict = { 
+      "documentation": response.documentation,
+    }
+    print("'structured_output_for_documentation_writer' structured output response:", response_dict)
+    return response_dict
+  
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
+
+
+
 
 ### DOCUMENTATION EVALUATION
 # structured output class for documentation steps evaluator and doc judge
-class CodeDocumentionEvaluation(BaseModel):
+class CodeDocumentationEvaluation(BaseModel):
     """Evaluate quality of documentation for code generation created for other LLM agents to be able to generate Python scripts following the those instructions."""
     decision: str = Field(default="", description="Analyse the documentation created instruction and evaluate if it needs to be written again  or if it is validated as good documentation. Answer 'rewrite' to request documentation to be witten again or 'generate' to validate as good documentation for LLM Agent to understand it and generate code easily following those instructions.")
     reason: str = Field(default="", description="Reasons motivating decision.")
     stage: str =  Field(default="", description="if decision is 'rewrite' indicate here which stage need to be done again: 'internet' for internet search to get more information as poorly informed or 'rewrite' for just rewriting the documentation in a better way.")
 
 # function for report generation structured output 
-def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured_class: CodeDocumentionEvaluation, query: str, prompt_template_part: str) -> Dict:
+def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured_class: CodeDocumentationEvaluation, query: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -137,12 +151,12 @@ def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
   response = prompt_and_model.invoke({"query": query})
   response_dict = { 
-    "DECISION": response.decision,
-    "REASON": response.reason,
-    "STAGE": response.stage,
+    "decision": response.decision,
+    "reason": response.reason,
+    "stage": response.stage,
   }
   print("'structured_output_for_documentation_steps_evaluator_and_doc_judge' structured output response:", response_dict)
   return response_dict
@@ -171,8 +185,8 @@ def structured_output_for_code_evaluator_and_final_script_writer(structured_clas
   prompt_and_model = prompt | groq_llm_llama3_70b | parser
   response = prompt_and_model.invoke({"query": query})
   response_dict = { 
-    "VALIDITY": response.decision,
-    "REASON": response.reason,
+    "validity": response.decision,
+    "reason": response.reason,
   }
   print("'structured_output_for_code_evaluator_and_final_script_writer' structured output response:", response_dict)
   return response_dict
@@ -201,8 +215,8 @@ def structured_output_for_agent_code_comparator_choice(structured_class: CodeCom
   prompt_and_model = prompt | groq_llm_llama3_70b | parser
   response = prompt_and_model.invoke({"query": query})
   response_dict = { 
-    "LLM_NAME": response.name,
-    "REASON": response.reason,
+    "llm_name": response.name,
+    "reason": response.reason,
   }
   print("'structured_output_for_agent_code_comparator_choice' structured output response:", response_dict)
   return response_dict
@@ -249,7 +263,7 @@ class CodeErrorAnalysis(BaseModel):
 
 
 # function for report generation structured output 
-def structured_output_for_error_analysis_node(structured_class: CodeErrorAnalyzis, query: str, prompt_template_part: str) -> Dict:
+def structured_output_for_error_analysis_node(structured_class: CodeErrorAnalysis, query: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 

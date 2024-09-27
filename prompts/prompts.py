@@ -163,12 +163,28 @@ structured_outpout_report_prompt = {
 # prompt for documentation_writer that will be using structured output to have a mardown formatted documentation
 get_user_input_prompt = {
   "system": {
-    "template": "You are an expert in user query analysis. You identify if there any need from the user to create some Python script code or to only create some coding documentation or nothing like code generation or documentation is needed. You use markdown for to answer.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in user query analysis. You identify if there any need from the user to create some Python script code or to only create some coding documentation or nothing like code generation or documentation is needed. You use markdown to answer.\n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {
     "template": "User query is: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Analyze the query to see if we need to generate Python script code for it or not.  Or if we need ONLY documentation created or not. Or if we don't need any code nor documentation as it is just a general question not needing any code generation or code documentation.", 
-    "input_variables": {"user_inital_query": ""}
+    "input_variables": {"user_initial_query": ""}
+  },
+  "ai": {
+    "template": "", 
+    "input_variables": {}
+  },
+}
+
+# prompt tool_api_choose_agent
+tool_api_choose_agent_prompt = {
+  "system": {
+    "template": "", 
+    "input_variables": {}
+  },
+  "human": {
+    "template": "Analyze user query: {user_initial_query}. And choose the appropriate API tool to address user query.", 
+    "input_variables": {"user_initial_query": ""}
   },
   "ai": {
     "template": "", 
@@ -195,12 +211,12 @@ find_documentation_online_agent_prompt = {
 # prompt for documentation_writer that will be using structured output to have a mardown formatted documentation
 documentation_writer_prompt = {
   "system": {
-    "template": "You are an expert in Python code documentation writing and creation. You will analyse information for the required documentation and will understand what user wants. You write instruction like documentation so that LLM agent called will understand and provide the corresponding code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it in markdown format.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python code documentation writing and creation. You will analyse information for the required documentation and will understand what user wants. You write instruction like documentation so that LLM agent called will understand and provide the corresponding code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it in markdown format but return the output strictly as a valid JSON object. \n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {
     "template": "I wanted a Python script in markdown to call an API: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Our agent chosen this api to satisfy user request: <API CHOICE>{api_choice}</API CHOICE>; and found some documentation online: <DOCUMENTATION FOUND ONLINE>{documentation_found_online}</DOCUMENTATION FOUND ONLINE>. Can you write in markdown format detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <API LINKS>{apis_links}</API LINKS>.", 
-    "input_variables": {"user_inital_query": "", "apis_links": "", "api_choice": "", "documentation_found_online": ""}
+    "input_variables": {"user_initial_query": "", "apis_links": "", "api_choice": "", "documentation_found_online": ""}
   },
   "ai": {
     "template": "", 
@@ -295,7 +311,7 @@ error_analysis_node_prompt = {
     "input_variables": {}
   },
   "human": {
-    "template": "Can you please check this error message coming from Python script execution: {error}.\nHere is the code:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>. And here is the requirements.txt file content: <REQUIREMENTS TO ANALYZE>{requirementss}</REQUIREMENTS TO ANALYZE>", 
+    "template": "Can you please check this error message coming from Python script execution: {error}.\nHere is the code:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.\nAnd here is the requirements.txt file content: <REQUIREMENTS TO ANALYZE>{requirementss}</REQUIREMENTS TO ANALYZE>\n", 
     "input_variables": {"error": "", "code": "", "requirements": ""}
   },
   "ai": {

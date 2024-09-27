@@ -1,4 +1,5 @@
 import os
+import sys
 # for typing func parameters and outputs and states
 from typing import Dict, List, Tuple, Any, Optional
 
@@ -17,6 +18,7 @@ from graphs.embedding_subgraph import embedding_subgraph
 from graphs.retrieval_subgraph import retrieval_subgraph
 from graphs.report_creation_subgraph import report_creation_subgraph
 from graphs.primary_graph import primary_graph
+from graphs.code_execution_graph import code_execution_graph
 from llms.llms import (
   groq_llm_mixtral_7b,
   groq_llm_llama3_8b,
@@ -49,25 +51,49 @@ create_table_if_not_exists(os.getenv("TABLE_NAME"))
 
 if __name__ == "__main__":
   # I want to know if this documents docs/feel_temperature.pdf tells us what are the different types of thermoceptors?
-   
+  '''
+    We will use raise Exception(...) but if having a Webui we can see how to handle it
+  '''
   custom_state = GraphStatePersistFlow()
   embedding_flow = ""
   retrieval_flow = ""
   # get user query
-  user_query =  input("Do you need any help? any PDF doc or webpage to analyze? ").strip()
+  user_query =  input("How can I help you today? ").strip()
   # save query to sdtate
   custom_state.user_initial_query = user_query
   print("custom graph user query field value: ", custom_state.user_initial_query)
 
+  ###################################### PDF or URL RAG DOCUMENT ANALYSIS AND REPORT CREATION #########################################
   """
-    QUERY ANALYSIS
+    QUERY ANALYSIS FOR CODE EXECUTION: DOCUMENTATION CREATION > SCRIPT CREATION > CODE EXECUTION IN DOCKER  or STARTING NEXT GRAPH
+  """
+  # start code execution graph
+  print("Starting Code Execution Graph")
+  try:
+    code_execution_flow =   code_execution_graph(custom_state.user_initial_query)
+    if "error" in code_execution_flow.lower():
+      raise Exception(f"An error occured while running 'code_execution_flow'")
+  except Exception as e:
+    raise Exception(f"An error occured while running 'code_execution_flow': {e}")
+
+  # stop the graph here if it was just code generation and documentation creation only otherwise the next graph will be started
+  if os.getenv("DOCUMENTATION_AND_CODE_GENERATION_ONLY") == "true" and code_execution_flow == "done":
+    # see here if we print all the env vars having where the files can be found
+    print("Code execution done in safe docker sandbox environment, documentation have been created.")
+    sys.exit()
+
+  ###################################### PDF or URL RAG DOCUMENT ANALYSIS AND REPORT CREATION #########################################
+  """
+    QUERY ANALYSIS: REPORT DIRECTLY OR RAG > CACHE > REPORT
   """
   # start primary graph
   print("Starting Primary Graph")
   try:
-    primary_flow =   primary_graph(custom_state.user_initial_query)
-    if "error" in primary_flow.lower():
-      raise Exception(f"An error occured while running 'primary_flow'")
+    # if the code_execution_graph returns the signal to start the query analysis we start the flow of graphs
+    if code_execution_flow == "primary_flow" and os.getenv("REPORT_NEEDED") == "true":
+      primary_flow =  primary_graph(os.getenv("USER_INITIAL_QUERY"))
+      if "error" in primary_flow.lower():
+        raise Exception(f"An error occured while running 'primary_flow'")
   except Exception as e:
     raise Exception(f"An error occured while running 'primary_flow': {e}")
 

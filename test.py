@@ -82,7 +82,15 @@ from typing_extensions import Annotated, TypedDict
 #from langchain_core.utils.function_calling import convert_pydantic_to_openai_function
 from langchain_core.utils.function_calling import convert_to_openai_function # use this one to replace both `format_tool_to_openai_function` and `convert_pydantic_to_openai_function`
 from langchain_core.output_parsers.pydantic import PydanticOutputParser
-
+# LLMs
+from llms.llms import (
+  groq_llm_mixtral_7b,
+  groq_llm_llama3_8b,
+  groq_llm_llama3_8b_tool_use,
+  groq_llm_llama3_70b,
+  groq_llm_llama3_70b_tool_use,
+  groq_llm_gemma_7b,
+)
 
 #from app_states.app_graph_states import StateCustom
 # for graph creation and management
@@ -96,11 +104,6 @@ from IPython.display import Image, display
 
 
 load_dotenv()
-
-groq_llm_mixtral_7b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_MIXTRAL_7B"),
-max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
-groq_llm_llama3_8b = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_8B"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
-groq_llm_llama3_70b_tool_use = ChatGroq(temperature=float(os.getenv("GROQ_TEMPERATURE")), groq_api_key=os.getenv("GROQ_API_KEY"), model_name=os.getenv("MODEL_LLAMA3_70B_TOOL_USE"), max_tokens=int(os.getenv("GROQ_MAX_TOKEN")),)
 
 
 webpage_url = "https://blog.medium.com/how-can-i-get-boosted-33e743431419"
@@ -799,7 +802,7 @@ with open("agent_tool_call_visualization.png", "wb") as f:
 
 
 
-
+'''
 from typing import Dict, Any
 from langchain.prompts import PromptTemplate, ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, AIMessagePromptTemplate
 from prompts.prompts import rewrite_or_create_api_code_script_prompt
@@ -822,11 +825,64 @@ def prompt_creation(target_prompt: Dict[str, Any], **kwargs: Any) -> PromptTempl
 
 
 prompt_creation(rewrite_or_create_api_code_script_prompt["human"], documentation= "MY DOCUMENTATION", user_initial_query= "MY INITIAL QUERY", api_choice= "MY API CHOICE", apis_links= "MY APP LINKS")
+'''
+
+from langchain.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from structured_output.structured_output import (
+  # class for user input analysis
+  AnalyseUserInput,
+  # function to analyze user input
+  structured_output_for_get_user_input
+)
+# utils
+from app_utils import prompt_creation
+from prompts.prompts import get_user_input_prompt
 
 
+class AnalyseUserInput(BaseModel):
+    """Analyse user query in order to identify if only documentation is needed to be created or if Python script code creation is needed."""
+    code: str = Field(default="NO", description="Say YES if user query needs Python script creation. Otherwise say NO. Answer using markdown")
+    onlydoc: str = Field(default="NO", description="Say YES if user query needs only documentation to be created and NOT Python code script. Otherwise say NO. Answer using markdown.")
+    nothing: str = Field(default="NO", description="Analyze the query, And no url or pdf have been identified in the query and no Python script code nor documentation is needed to be created says 'YES'. Meaning that it is just a simple question that doesn't require code or documentation creation.")
+    pdforurl: str = Field(default="NO", description="Analyze the query and identify if there is any pdf or url in it. Answer 'YES' to tell that the query have a .pdf file mentioned in it or an url like address.")
+    
 
 
+# function for report generation structured output 
+def structured_output_for_get_user_input(structured_class: AnalyseUserInput, query: str, prompt_template_part: str) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
 
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b groq_llm_mixtral_7b
+  prompt_and_model = prompt | groq_llm_llama3_70b | parser
+  response = prompt_and_model.invoke({"query": query})
+  response_dict = { 
+    "code": response.code,
+    "onlydoc": response.onlydoc,
+    "nothing": response.nothing,
+    "pdforurl": response.pdforurl
+  }
+  print("'structured_output_for_documentation_writer' structured output response:", response_dict)
+  return response_dict
+
+
+last_message = input("Enter your query: ")
+print("last_message: ", last_message)
+# use structured output to decide if we need to generate documentation and code
+query = prompt_creation(get_user_input_prompt["human"], user_initial_query=last_message.strip())
+print("Query created: ", query)
+
+query_analysis = structured_output_for_get_user_input(AnalyseUserInput, query, get_user_input_prompt["system"]["template"]) 
+print("Response: ", query_analysis)
 
 
 

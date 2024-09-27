@@ -16,11 +16,11 @@ from structured_output.structured_output import (
   # function to analyze user input
   structured_output_for_get_user_input,
   # class for document writer
-  DocumentionWriter,
+  DocumentationWriter,
   # function for document writer structured ouput
   structured_output_for_documentation_writer,
   # class for document quality judgement
-  CodeDocumentionEvaluation,
+  CodeDocumentationEvaluation,
   # function for documentation evaluation
   structured_output_for_documentation_steps_evaluator_and_doc_judge,
   # class for script quality evaluation
@@ -40,10 +40,13 @@ from structured_output.structured_output import (
   # function for code execution analysis
   structured_output_for_error_analysis_node
 )
+# prompts
 from prompts.prompts import (
   get_user_input_prompt,
+  tool_api_choose_agent_prompt,
   find_documentation_online_agent_prompt,
   documentation_writer_prompt,
+  rewrite_or_create_api_code_script_prompt,
   script_creator_prompt,
   code_evaluator_and_final_script_writer_prompt,
   choose_code_to_execute_node_if_many_prompt,
@@ -57,9 +60,7 @@ from langchain_core.prompts import PromptTemplate
 Maybe will have to move those functions OR to a file having all node functions OR to the corresponding graph directly
 """
 # utils
-from app_utils import creation_prompt
-# prompts
-from prompts.prompts import rewrite_or_create_api_code_script_prompt
+from app_utils import prompt_creation
 # Docker execution code
 from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker
 # Tools
@@ -130,12 +131,17 @@ def beautify_output(data):
 def inter_graph_node(state: MessagesState):
   # get last message
   messages = state['messages']
-  last_message = messages[-1].content
-  if last_message == "nothing":
-    user_initial_query = os.getenv("USER_INITIAL_QUERY")
-    # here we just need to send the query to the report graph that will make a report from the query or create a node that answer the query before this one here
-    return {"messages": [{"role": "system", "content": f"report_graph:{user_initial_query}"}]}
-  return {"messages": [{"role": "system", "content": last_message}]}
+  # we return last 3 messages
+  last_three_messages_json = json.dumps([
+    {
+      "Graph Code Execution Done": "Find here the last 3 messages of code execution graph",
+      "message -3": messages[-3].content,
+      "message -2": messages[-2].content,
+      "message -1": messages[-1].content,
+    }
+  ])
+  
+  return {"messages": [{"role": "system", "content": last_three_messages_json}]}
 
 # api selection
 def tool_api_choose_agent(state: MessagesState):
@@ -143,78 +149,97 @@ def tool_api_choose_agent(state: MessagesState):
     last_message = messages[-1].content
     print("message state -1: ", messages[-1].content, "\nmessages state -2: ", messages[-2].content)
     # print("messages from call_model func: ", messages)
-    response = llm_api_call_tool_choice.invoke(last_message)
+    user_initial_query = os.getenv("USER_INITIAL_QUERY")
+
+    query = prompt_creation(tool_api_choose_agent_prompt["human"], user_initial_query=user_initial_query)
+    response = llm_api_call_tool_choice.invoke(json.dumps(query))
+
     return {"messages": [response]}
 
 # NODE FUNCTIONS
-def get_user_input(state: MessagesState):
+def get_user_input(state: MessagesState, analyse_query_class = AnalyseUserInput):
   messages = state['messages']
   last_message = messages[-1].content
-  set_key(".var.env", "USER_INITIAL_QUERY", last_message)
+  set_key(".vars.env", "USER_INITIAL_QUERY", last_message)
   load_dotenv(dotenv_path=".vars.env", override=True)
+
+  print(f"ENV VAR SAVED QUERY: {os.getenv('USER_INITIAL_QUERY')}")
   
   # use structured output to decide if we need to generate documentation and code
   query = prompt_creation(get_user_input_prompt["human"], user_initial_query=last_message)
   try:
-    query_analysis = structured_output_for_get_user_input(requirements_creation_class, query, get_user_input_prompt["system"]["template"]) 
+    query_analysis = structured_output_for_get_user_input(analyse_query_class, query, get_user_input_prompt["system"]["template"]) 
     '''
     { 
       "code": response.code,
       "onlydoc": response.onlydoc,
-      "nothing": response.nothing
+      "nothing": response.nothing,
+      "pdforurl": response.pdforurl
     }
     '''
+    # conditional edge at this node will handle the flow to return back to some nodes or to start the other graphs directly 
     for elem, status in query_analysis.items():
-      if elem == "nothing" and status.lower() == "nothing":
-        # Go to node that will call llm to answer the question or to end of this graph so that it can be sent to report generation graph: direct to that from conditional edge
-        return {"messages": [{"role": "ai", "content": "nothing"}]}        
-      else:
-        # otherwise check if we need doc or code to be generated
-        if elem == "onlydoc" and status.lower() == "yes":
-          # just search for documentation and answer to user
-          return {"messages": [{"role": "ai", "content": "onlydoc"}]}
-        else:
-          if elem == "code" and status.lower() == "yes":
-            # go the normal flow as code generation is needed so we need to test it in docker
-            return {"messages": [{"role": "ai", "content": "code"}]}
+      # this is the route to go to another graph with only a question or with a question and a url/pdf coming with it
+      if elem == "nothing" and status.lower() == "yes":
+        for k, v in query_analysis.items():
+          # route that will forward the key 'pdforurl' so that it will be sent to the right graph 'primary graph'
+          if k == "pdforurl" and v.lower() == "yes":  
+            return {"messages": [{"role": "ai", "content": str(k)}]}
+        # route that will forward 'nothing' meaning that there is only a question in the query and we will send to the 'report' graph
+        return {"messages": [{"role": "ai", "content": str(elem)}]}
+      # otherwise check if we need doc or code to be generated
+      elif (elem == "onlydoc" and status.lower() == "yes") or (elem == "code" and status.lower() == "yes"):
+        # route that will forward or 'onlydoc' or 'code' in order to start this graph (we could split it and improve code to have onlydoc generation then stop or only code generation and execution then stop but we are going to keep the mvp simple yet it is advanced at this stage already)
+        return {"messages": [{"role": "ai", "content": str(elem)}]}
+  except Exception as e:
+    return {"messages": [{"role": "ai", "content": f"An error occured while trying to analyze user input content: {e}"}]}
+
         
        
 
 
 def error_handler(state: MessagesState):
   messages = state['messages']
-  last_message = messages[-1].content
+  last_three_messages_json = json.dumps([
+    {
+      "Error": "Find here the last 3 messages of code execution graph",
+      "message -3": messages[-3].content,
+      "message -2": messages[-2].content,
+      "message -1": messages[-1].content,
+    }
+  ])
   
   with open("./logs/conditional_edge_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"\n\nerror handler called: {last_message}\n\n")
+      conditional.write(f"\n\nerror handler called: {last_three_messages_json}\n\n")
 
-  return {"messages": [{"role": "ai", "content": f"An error occured, error message: {last_message}"}]}
+  return {"messages": [{"role": "ai", "content": f"An error occured, error message: {last_three_messages_json}"}]}
 
-def find_documentation_online_agent(state: MessagesState, APIs: Dict[str,str] = apis):
+def find_documentation_online_agent(state: MessagesState, APIs = apis):
     messages = state['messages']
     
     ## VARS
     # should be the tool that have been picked by the agent to satisfy user request
     last_message = messages[-1].content
     # create environment variable with the API that have been chosen for next nodes to have access to it if needed
-    sek_key(".var.env", "API_CHOICE", last_message)
+    set_key(".vars.env", "API_CHOICE", last_message)
     load_dotenv(dotenv_path=".vars.env", override=True)
     print("message state -1: ", messages[-1].content)
     user_initial_query = os.getenv("USER_INITIAL_QUERY")
     
     # create prompt
-    query = prompt_creation(find_documentation_online_agent_prompt["human"], last_message=last_message, APIs=APIs, user_initial_query=user_initial_query})
+    query = prompt_creation(find_documentation_online_agent_prompt["human"], last_message=last_message, APIs=APIs, user_initial_query=user_initial_query)
     response = llm_with_internet_search_tool.invoke(json.dumps(query))
     return {"messages": [response]}
 
-def documentation_writer(state: MessagesState, apis: Dict[str,str] = apis, doc_writer_class =  DocumentionWriter):
+# documentation writer with structured output help
+def documentation_writer(state: MessagesState, apis = apis, doc_writer_class = DocumentationWriter):
   messages = state['messages']
   
   #### VARS ####
   # this message should be the internet search result telling how to create the code to make api call to the chosen api
   last_message = messages[-1].content
   # save last_message which is the internet search result so that we can access it from other nodes in case of a loop back in a future node so not coming back here
-  sek_key(".var.env", "DOCUMENTATION_FOUND_ONLINE", last_message)
+  set_key(".vars.env", "DOCUMENTATION_FOUND_ONLINE", last_message)
   load_dotenv(dotenv_path=".vars.env", override=True)
   # online doc found
   documentation_found_online = os.getenv("DOCUMENTATION_FOUND_ONLINE")
@@ -223,14 +248,16 @@ def documentation_writer(state: MessagesState, apis: Dict[str,str] = apis, doc_w
   # user initial query
   user_initial_query = os.getenv("USER_INITIAL_QUERY")
 
-  # creation of the query by injecting variables in
-  query = prompt_creation(structured_output_for_documentation_writer["human"], documentation_found_online=last_message, user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis)
+  # creation of the query by injecting variables in  
+  query = prompt_creation(documentation_writer_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=last_message)
   # get the answer as we want it using structured output and injecting the 'human' prompt in the system one
   try:
-    written_documentation = structured_output_for_documentation_writer(doc_writer_class, query, structured_output_for_documentation_writer["system"]["template"])
+    written_documentation = structured_output_for_documentation_writer(doc_writer_class, query, documentation_writer_prompt["system"]["template"])
+    print("Writen_documentation: ", type(written_documentation), written_documentation)
     
-    # parse content
+    # parse content, here doc is str and written_documentation a dict
     doc = written_documentation["documentation"]
+    print("DOC: ", type(doc), doc)
   
     # write the documentation to a file
     with open(os.getenv("CODE_DOCUMENTATION_FILE_PATH"), "w", encoding="utf-8") as code_doc:
@@ -238,10 +265,11 @@ def documentation_writer(state: MessagesState, apis: Dict[str,str] = apis, doc_w
         '''
         This file contains the documentation in how to write a mardown Python script to make API to satisfy user request.
         Make sure that the script is having the right imports, indentations, uses Python standard libraries and do not have any error before starting writing it.
-        '''
-      """\n\n)
+        '''\n\n
+      """)
       code_doc.write(doc)
     
+    # go the judge and documentation evaluator agent
     return {"messages": [{"role": "ai", "content": doc}]}
   except Exception as e:
     return {"messages": [{"role": "ai", "content": f"error while trying to write documentation from internet search information about {api_choice} api: {e}"}]}
@@ -281,7 +309,7 @@ def gemma_3_7b_script_creator(state: MessagesState):
   return {"messages": [{"role": "ai", "content": f"gemma_3_7b:{response.content}"}]}
 
 # judging documentation created agent
-def documentation_steps_evaluator_and_doc_judge(state: MessagesState, code_doc_eval_class = CodeDocumentionEvaluation):
+def documentation_steps_evaluator_and_doc_judge(state: MessagesState, apis = apis, code_doc_eval_class = CodeDocumentationEvaluation):
   """
     Will judge the documentation and return 'rewrite' to rewrite the documentation or 'generate' to start generating the script
   """
@@ -301,24 +329,24 @@ def documentation_steps_evaluator_and_doc_judge(state: MessagesState, code_doc_e
   try:
     decision = structured_output_for_documentation_steps_evaluator_and_doc_judge(code_doc_eval_class, query, rewrite_or_create_api_code_script_prompt["system"]["template"])
     print("\n\n\nDECISION: ", decision, type(decision))
-  """
-  # Object returned by the structured output llm call
-  { 
-    "DECISION": response.decision,
-    "REASON": response.reason,
-    "STAGE": response.stage,
-  }
     """
-    if decision.content["DECISION"] == "rewrite":
-      return {"messages": [{"role": "ai", "content": json.dumps({"disagree":decision.content})}]} # use spliting technique to get what is wanted 
-    elif decision.content["DECISION"] == "generate":
+      # Object returned by the structured output llm call
+      { 
+      "decision": response.decision,
+      "reason": response.reason,
+      "stage": response.stage,
+      }
+    """
+    if decision["decision"] == "rewrite":
+      return {"messages": [{"role": "ai", "content": json.dumps({"disagree":decision})}]} # use spliting technique to get what is wanted 
+    elif decision["decision"] == "generate":
       return {"messages": [{"role": "ai", "content": json.dumps({"success":"generate"})}]}
     else:
-      return {"messages": [{"role": "ai", "content": json.dumps({"error":decision.content})}]}
+      return {"messages": [{"role": "ai", "content": json.dumps({"error":decision})}]}
   except Exception as e:
     return {"messages": [{"role": "ai", "content": json.dumps({"error":e})}]} 
 
-def code_evaluator_and_final_script_writer(state: MessagesState, evaluator_class = CodeScriptEvaluation):
+def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, evaluator_class = CodeScriptEvaluation):
     """
     This node receives code from different LLMs, evaluates if it's valid by calling another LLM, 
     and returns 'YES' or 'NO' for validation using structured outputs.
@@ -349,14 +377,18 @@ def code_evaluator_and_final_script_writer(state: MessagesState, evaluator_class
     
     # Assume the last three messages are the code outputs
     codes = [ messages[-1].content, messages[-2].content, messages[-3].content]
+    print("CODES: ", codes)
     for code in codes:
       llm_name, llm_code = code.split(":")[0], code.split(":")[1]
       if llm_name.strip() == "llama_3_8b":
-        dict_llm_code[llm_name.strip()] == llm_code.strip()
+        print("LLM NAME: ", llm_name)
+        dict_llm_codes[llm_name.strip()] == llm_code.strip()
       elif llm_name.strip() == "llama_3_70b":
-        dict_llm_code[llm_name.strip()] == llm_code.strip()
+        print("LLM NAME: ", llm_name)
+        dict_llm_codes[llm_name.strip()] == llm_code.strip()
       elif llm_name.strip() == "gemma_3_7b":
-        dict_llm_code[llm_name.strip()] == llm_code.strip()
+        print("LLM NAME: ", llm_name)
+        dict_llm_codes[llm_name.strip()] == llm_code.strip()
       else:
         return {"messages": [{"role": "system", "content": "Error: An error occured while trying to put LLM codes in a dictionary before evaluating those."}]}
 
@@ -374,14 +406,14 @@ def code_evaluator_and_final_script_writer(state: MessagesState, evaluator_class
         print("CODE EVALUATION: ", evaluation)
         """
         { 
-          "VALIDITY": response.decision,
-          "REASON": response.reason,
+          "validity": response.decision,
+          "reason": response.reason,
         }
         """
-        if "yes" in evaluation["VALIDITY"].lower():
+        if "yes" in evaluation["validity"].lower():
           llm_code_valid_responses_list_dict.append({k: v})
-        elif "no" in evaluation["VALIDITY"].lower():
-          llm_code_invalid_responses_list_dict.append({k: v, "reason": evaluation['REASON']})
+        elif "no" in evaluation["validity"].lower():
+          llm_code_invalid_responses_list_dict.append({k: v, "reason": evaluation['reason']})
       except Exception as e:
         return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to evaluate if LLM codes are valid:{e}"})}]}
     
@@ -407,8 +439,8 @@ def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_
   query = prompt_creation(choose_code_to_execute_node_if_many_prompt["human"], user_initial_query=user_initial_query, code=FORMATTED_CODES)
   try:
     choice = structured_output_for_agent_code_comparator_choice(comparator_choice_class, query, choose_code_to_execute_node_if_many_prompt["system"]["template"])
-    llm_name = choice["LLM_NAME"]
-    reason = chocie["REASON"]
+    llm_name = choice["llm_name"]
+    reason = chocie["reason"]
     print("LLM SCRIPT CHOICE AND REASON: ", llm_name, reason )
     return {"messages": [{"role": "ai", "content": json.dumps({"success": {"llm_name": llm_name, "reason": reason}})}]}
   except Exception as e:
@@ -424,7 +456,7 @@ def create_requirements_for_code(state: MessagesState, requirements_creation_cla
   scripts_folder = os.getenv("AGENTS_SCRIPTS_FOLDER")
   scripts_list_in_folder = os.listdir(scripts_folder)
   for script in scripts_list_in_folder:
-    if script.startswith(f"agent_code_execute_in_docker_{llm_name}")
+    if script.startswith(f"agent_code_execute_in_docker_{llm_name}"):
       # we get the script code that will be injected in the human prompt
       script_to_create_requirement_for = script
 
@@ -434,8 +466,8 @@ def create_requirements_for_code(state: MessagesState, requirements_creation_cla
     requirements_response = structured_output_for_create_requirements_for_code(requirements_creation_class, query, create_requirements_for_code_prompt["system"]["template"])
     
     # responses parsing
-    requirements_txt_content = requirements_response["REQUIREMENTS"]
-    requirements_needed_or_not = requirements_response["NEEDED"]
+    requirements_txt_content = requirements_response["requirements"]
+    requirements_needed_or_not = requirements_response["needed"]
     print("REQUIREMENTS AND IF NEEDED OR NOT: ", requirements_txt_content, requirements_needed_or_not)
     
     # check if llm believed that code needs a requirements.txt file or not
@@ -451,7 +483,7 @@ def create_requirements_for_code(state: MessagesState, requirements_creation_cla
     return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to check if code needs requirements.txt file created or not:{e}"})}]}
 
 # will execute code in docker sandbox
-def code_execution_node(state: StateMessages):
+def code_execution_node(state: MessagesState):
   stdout_list_dict = []
   stderr_list_dict = []
   exception_error_log_list_dict = []
@@ -501,23 +533,23 @@ def code_execution_node(state: StateMessages):
 
   # decrease the retry value
   retry_code_execution -= 1
-  set_key(".var.env", "RETRY_CODE_EXECUTION", str(retry_code_execution))
+  set_key(".vars.env", "RETRY_CODE_EXECUTION", str(retry_code_execution))
   load_dotenv(dotenv_path=".vars.env", override=True)
 
   # send the results to next node
   return {"messages": [{"role": "ai", "content": json.dumps({"stdout": stdout_list_dict, "stderr": stderr_list_dict, "exception": exception_error_log_list_dict})}]}   
 
 # code has successfully being executed
-def successful_code_execution_management(state: MessagesState, code_error_analysis_class = CodeErrorAnalysis):
+def successful_code_execution_management(state: MessagesState):
   messages = state["messages"]
   stdout = json.loads(messages[-1].content)["stdout"]
   # create a report from here so save this successful graph code execution to an env var for business logic side to get it and forward to report_creation node
-  sek_key(".vars.env", "CODE_EXECUTION_GRAPH_RESULT", json.dumps({"success": stdout}))
+  set_key(".vars.env", "CODE_EXECUTION_GRAPH_RESULT", json.dumps({"success": stdout}))
   load_dotenv(dotenv_path=".vars.env", override=True)
-  return {"messages": [{"role": "system", "content": json.dumps({"success": stdout})}]}
+  return {"messages": [{"role": "system", "content": json.dumps({"success_code_execution": stdout})}]}
 
 # will analyse error returned by code execution
-def error_analysis_node(state: MessagesState):
+def error_analysis_node(state: MessagesState, code_error_analysis_class = CodeErrorAnalysis):
   """
     This node function will use structured output in order to identify errors in script or requirements.txt and go to execution node to try again with those new updated files
     Files names will be preserved so that execution node can easily use same pattern to re-execute code.
@@ -531,8 +563,10 @@ def error_analysis_node(state: MessagesState):
   for script in os.listdir(os.getenv("AGENTS_SCRIPT_FOLDER")):
     if script.endswith(".txt") and script.startswith("llm_name"):
       requirements_file = script
+   
   # ask llm to check the error compared to the user initial query, the api chosen, the code and the requirements.txt and use structured output to provide new code, new requirements.txt and return to execute code with those new file, therefore need to create an explicative name for those new files and save those names to state to keep track
-  query = prompt_creation(error_analysis_node_prompt["human"], error=error_message, code=code, requirements=requirements_file, dockerfile=<>)
+  # see if we add the dockerfile of not dockerfile=f"{llm_name}_dockerfile"
+  query = prompt_creation(error_analysis_node_prompt["human"], error=error_message, code=code, requirements=requirements_file)
   '''
    don't forget that you also need to provide the dockerfile and use the same file names in formatting when rewriting those files so that the execution code node will just run the same file names but which have been overwritten
   '''
@@ -570,28 +604,48 @@ def error_analysis_node(state: MessagesState):
 
 ######   CONDITIONAL EDGES FUNCTIONS
 # check if code creation is needed or not to fulfil user query
-def code_or_doc_needed_or_not(state: MessagesState, apis=):
+def code_or_doc_needed_or_not(state: MessagesState):
   messages = state["messages"]
+  # last_message will be either of those keys "code", "onlydoc", "nothing", "pdforurl"
   last_message = messages[-1].content
 
-  if "code" in last_message:
+  # we could separate this but will just start at the beginning of the graph here for this mvp
+  # but we could just do the full graph or just generate only documentation and exit
+  if "code" in last_message or "onlydoc" in last_message:
+    # set the envrionement variable to notified the 'Business Logic' side of the app that only code generation and documentation was needed and stop the app
+    set_key(".vars.env", "DOCUMENTATION_AND_CODE_GENERATION_ONLY", "true")
+    load_dotenv(dotenv_path=".vars.env", override=True)
     return "tool_api_choose_agent"
-  elif "onlydoc" in last_message:
+  elif "pdforurl" in last_message:
     return ""
-  elif "nothing" in last_message"
-    state["messages"].append({"role": "system", "content": "nothing"})
+  elif "nothing" in last_message:
+    # notify the end of this graph that we need a report to be created so this will start next graph in the 'Business Logic' side of the app
+    set_key(".vars.env", "REPORT_NEEDED", "true")
+    load_dotenv(dotenv_path=".vars.env", override=True)
     return "inter_graph_node" # go the end of the graph and call the report graph 
+  else:
+    # if there is a problem we will return the error which will just render the last message or  the last 3 messages
+    return "error_handler"
 
-
+def evaluate_doc_or_error(state: MessagesState):
+  messages = state["messages"]
+  last_message = messages[-1].content
+  
+  if "error" in last_message:
+    return "error_handler"
+  else:
+    return "documentation_steps_evaluator_and_doc_judge"
+    
 
 # after doc evaluation and judge
 def rewrite_documentation_or_execute(state: MessagesState):
   # this is the jodge agent message decision
   messages = state["messages"]
   last_message = messages[-1].content
+  # decision["decision"] rewrite/generate ; decision["reason"] long str ; decision["stage"] rewrite/internet
   decision = json.loads(last_message)
-  # decision["DECISION"] rewrite/generate ; decision["REASON"] long str ; decision["STAGE"] rewrite/internet
-  decision_dict = json.loads(last_message)
+  print("REWRITE DOCUMENTATION OR EXECUTE DECISION: ", decision, type(decision))
+  
   # we check retries are not null
   load_dotenv(dotenv_path=".vars.env", override=True)
   retry_doc_validation = int(os.getenv("RETRY_DOC_VALIDATION"))
@@ -602,19 +656,27 @@ def rewrite_documentation_or_execute(state: MessagesState):
   
   # decrease the retry value
   retry_doc_validation -= 1
-  set_key(".var.env", "RETRY_DOC_VALIDATION", str(retry_doc_validation))
+  set_key(".vars.env", "RETRY_DOC_VALIDATION", str(retry_doc_validation))
   load_dotenv(dotenv_path=".vars.env", override=True)
 
-  if "success" in decision:
-    return ["llama_3_8b_script_creator", "llama_3_70b_script_creator", "gemma_3_7b_script_creator"] # those nodes will run in parallel
-  # this one loops back up to recreate initial documentation by searching online
-  elif "disagree" in decision and "internet" in decision["STAGE"]: 
-    return "find_documentation_online_agent"
-  # this one loops back the document writer
-  elif "disagree" in decision and "rewrite" in decision["STAGE"]:
-   return "documentation_writer"
-  else:
-    return "error_handler"
+  for k,v in decision.items():
+    if k == "success":
+      print("k: ", k)
+      return ["llama_3_8b_script_creator", "llama_3_70b_script_creator", "gemma_3_7b_script_creator"] # those nodes will run in parallel
+    # this one loops back up to recreate initial documentation by searching online
+    elif k == "disagree":
+      print("k: ", k)
+      if v["stage"] == "internet":
+        return "find_documentation_online_agent"
+      # this one loops back the document writer
+      elif v["stage"] == "rewrite":
+        return "documentation_writer"
+    elif k == "error":
+      return "error_handler"
+
+  # default return if nothing match or other issue
+  return "error_handler"
+
 
 # after code evaluator
 def rewrite_or_create_requirements_decision(state: MessagesState):
@@ -642,7 +704,7 @@ def rewrite_or_create_requirements_decision(state: MessagesState):
     
     # decrease the retry value
     retry_code_validation -= 1
-    set_key(".var.env", "RETRY_CODE_VALIDATION", str(retry_code_validation))
+    set_key(".vars.env", "RETRY_CODE_VALIDATION", str(retry_code_validation))
     load_dotenv(dotenv_path=".vars.env", override=True)
     
     return ["llama_3_8b_script_creator", "llama_3_70b_script_creator", "gemma_3_7b_script_creator"]
@@ -651,7 +713,7 @@ def rewrite_or_create_requirements_decision(state: MessagesState):
 
     # decrease the retry value
     retry_code_validation -= 1
-    set_key(".var.env", "RETRY_CODE_VALIDATION", str(retry_code_validation))
+    set_key(".vars.env", "RETRY_CODE_VALIDATION", str(retry_code_validation))
     load_dotenv(dotenv_path=".vars.env", override=True)
 
     # we loop over the valid code and save those to files that will be executed in next graphm we might need to put those in a folder nested inside the docker stuff
@@ -714,7 +776,7 @@ def create_requirements_or_error(state: MessagesState):
     # go to code execution node
     return "create_requirements_for_code"
   
-  else 
+  else:
     if "error" in outcome: # str
       # go to error_handler
       return "error_handler"
@@ -754,7 +816,7 @@ workflow.add_node("tool_agent_decide_which_api_node", tool_agent_decide_which_ap
 workflow.add_node("find_documentation_online_agent", find_documentation_online_agent) # internet search tool with the right schema sent to the ToolNode executor
 workflow.add_node("tool_search_node", tool_search_node)
 workflow.add_node("documentation_writer", documentation_writer) # will get the internet search result about documentation in how to perform api call and write documentation
-workflow,add_node("documentation_steps_evaluator_and_doc_judge", documentation_steps_evaluator_and_doc_judge)
+workflow.add_node("documentation_steps_evaluator_and_doc_judge", documentation_steps_evaluator_and_doc_judge)
 workflow.add_node("llama_3_8b_script_creator", llama_3_8b_script_creator)
 workflow.add_node("llama_3_70b_script_creator", llama_3_70b_script_creator)
 workflow.add_node("gemma_3_7b_script_creator", gemma_3_7b_script_creator)
@@ -764,52 +826,53 @@ workflow.add_node("create_requirements_for_code", create_requirements_for_code)
 workflow.add_node("code_execution_node", code_execution_node)
 workflow.add_node("successful_code_execution_management", successful_code_execution_management)
 workflow.add_node("error_analysis_node", error_analysis_node)
-workflow.add_node("report_creation_node", report_creation_node) # need to be created
 workflow.add_node("inter_graph_node", inter_graph_node)
 
 # edges
 workflow.set_entry_point("get_user_input")
-workflow.add_conditional_edge(
+workflow.add_conditional_edges(
   "get_user_input",
-  code_needed_or_not
+  code_or_doc_needed_or_not
 )
 """
 see if we add conditional adge from "get_user_input" node
 """
 # tool edges
 workflow.add_edge("tool_api_choose_agent", "tool_agent_decide_which_api_node")
-# answer user
-workflow.add_edge("error_handler", "answer_user")
+# edges
 workflow.add_edge("tool_agent_decide_which_api_node", "find_documentation_online_agent")
 workflow.add_edge("find_documentation_online_agent", "tool_search_node")
 workflow.add_edge("tool_search_node", "documentation_writer")
-workflow.add_edge("documentation_writer", "documentation_steps_evaluator_and_doc_judge")
-workflow.add_conditional_edge(
+workflow.add_conditional_edges(
+  "documentation_writer",
+  evaluate_doc_or_error
+)
+workflow.add_conditional_edges(
   "documentation_steps_evaluator_and_doc_judge",
   rewrite_documentation_or_execute,
 )
 workflow.add_edge("llama_3_8b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_edge("llama_3_70b_script_creator", "code_evaluator_and_final_script_writer")
 workflow.add_edge("gemma_3_7b_script_creator", "code_evaluator_and_final_script_writer")
-workflow.add_condition_edge(
+workflow.add_conditional_edges(
   "code_evaluator_and_final_script_writer",
   rewrite_or_create_requirements_decision
 )
-workflow.add_conditional_edge(
+workflow.add_conditional_edges(
   "choose_code_to_execute_node_if_many",
   create_requirements_or_error
 )
-workflow.add_conditional_edge(
+workflow.add_conditional_edges(
   "create_requirements_for_code",
   execute_code_or_error
 )
-workflow.add_condition_edge(
+workflow.add_conditional_edges(
   "code_execution_node",
   success_execution_or_retry_or_return_error
 )
 workflow.add_edge("successful_code_execution_management", "inter_graph_node")
 # after error analysis we going back to code execution as we are creating new script or requirements file... or both
-workflow.add_condition_edge(
+workflow.add_conditional_edges(
   "error_analysis_node",
   re_execute_or_error
 )
@@ -842,9 +905,9 @@ print("Final Message:", final_message)
 
 """
 """
-
-def primary_graph(user_query):
-  print("Primary Graph")
+def code_execution_graph(user_query):
+  print("Code execution Graph")
+  print(f"Query: '{user_query}'")
   count = 0
   for step in user_query_processing_stage.stream(
     {"messages": [SystemMessage(content=user_query)]},
@@ -857,17 +920,18 @@ def primary_graph(user_query):
       output = beautify_output(step)
       print(f"Step {count}: {output}")
   
+
   # subgraph drawing
   graph_image = user_query_processing_stage.get_graph(xray=True).draw_mermaid_png()
-  with open("primary_subgraph.png", "wb") as f:
+  with open("code_execution_subgraph.png", "wb") as f:
     f.write(graph_image)
+
   
-  if os.getenv("PARQUET_FILE_PATH"):
-    if ".parquet" in os.getenv("PARQUET_FILE_PATH"):
-      # tell to start `embeddings` graph
-      return "embeddings"
-    return "error"
-  elif "true" in os.getenv("PRIMARY_GRAPH_NO_DOCUMENTS_NOR_URL"):
+  # this is set from the first node and conditional edge of the graph so that the 'Dusiness Logic' side of the app knows how to manage graph flows
+  if "true" in os.getenv("REPORT_NEEDED"):
+    # tell to start `primary_graph` graph
+    return "primary_graph"
+  elif "true" in os.getenv("DOCUMENTATION_AND_CODE_GENERATION_ONLY"):
     return "done"
   else:
     return "error"
@@ -875,8 +939,9 @@ def primary_graph(user_query):
 '''
 if __name__ == "__main__":
 
+  #query = "I need to make an API call to get the age of my friend based on her name which is 'Junko'."
   # to test it standalone
-  primary_graph()
+  #code_execution_graph(query)
 '''
 
 

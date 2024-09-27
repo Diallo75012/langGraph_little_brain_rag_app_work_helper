@@ -50,7 +50,7 @@ llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([search])
 
 ## API call tool
 @tool
-def jokes(state: MessagesState = MessagesState()) -> List[str]:
+def jokes() -> List[str]:
   """
   APIs that provides random jokes.
     
@@ -61,9 +61,9 @@ def jokes(state: MessagesState = MessagesState()) -> List[str]:
     </tool>
   </choices of tools>
   """
-  return {"messages": [{"role": "ai", "content": ["joke"]}]}
+  return "joke"
 @tool
-def agify(state: MessagesState = MessagesState()) -> List[str]:
+def agify() -> List[str]:
   """
   APIs that predicts the age based on a given name.
     
@@ -74,9 +74,9 @@ def agify(state: MessagesState = MessagesState()) -> List[str]:
     </tool>
   </choices of tools>
   """
-  return {"messages": [{"role": "ai", "content": ["agify"]}]}
+  return "agify"
 @tool
-def dogimages(state: MessagesState = MessagesState()) -> List[str]:
+def dogimages() -> List[str]:
   """
   APIs that returns random images of dogs
     
@@ -87,7 +87,7 @@ def dogimages(state: MessagesState = MessagesState()) -> List[str]:
     </tool>
   </choices of tools>
   """
-  return {"messages": [{"role": "ai", "content": ["dogimages"]}]}
+  return "dogimages"
 
 # API TOOL CHOICE NODE
 tool_agent_decide_which_api_node = ToolNode([jokes, agify, dogimages])
