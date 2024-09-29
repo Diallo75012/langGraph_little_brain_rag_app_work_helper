@@ -2982,7 +2982,7 @@ have created more prompts templates, structured outputs for all llm calls, still
 
 '''
 
-- graph work fine until after the parallele code generation and then comes up with an error, so fix it and continue debugging and improving until graph finisehd and test all cases with url and more...:
+- graph work fine until after the parallele code generation and then comes up with an error, so fix it and continue debugging and improving until graph finisehd and test all cases with url and more... check that the documentation written by agent is used by agents when doing parallele coding:
 ```bash
   File "/home/creditizens/langgraph/graphs/code_execution_graph.py", line 391, in code_evaluator_and_final_script_writer
     dict_llm_codes[llm_name.strip()] == llm_code.strip()
@@ -2995,6 +2995,47 @@ Traceback (most recent call last):
     raise Exception(f"An error occured while running 'code_execution_flow': {e}")
 Exception: An error occured while running 'code_execution_flow': 'gemma_3_7b'
 ```
+
+
+# rendering the graph image
+Here are some methods that can be used with Xray for visualizing graphs:
+
+- **`.to_mermaid()`:**
+Converts the graph into Mermaid code format. Mermaid is a popular diagram scripting language used to visualize workflows, graphs, and other structured data as text.
+
+- **`.draw_mermaid_code()`:**
+Renders the graph as Mermaid code directly into a readable diagram format in your IDE or notebook. It allows for easy copy-pasting of the code to use with Mermaid editors.
+
+- **`.draw_mermaid_png()`:**
+This method generates a PNG image from the Mermaid diagram code, providing a visual representation of the graph in image format.
+
+- **`.draw_png()`:**
+Directly generates a PNG image of the graph using its internal visualization engine, without converting it to Mermaid first.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -284,7 +284,7 @@ def llama_3_8b_script_creator(state: MessagesState):
   messages = [system_message, human_message]
   response = groq_llm_llama3_8b.invoke(messages)  
   
-  return {"messages": [{"role": "ai", "content": f"llama_3_8b:{response.content}"}]}
+  return {"messages": [{"role": "ai", "content": json.dumps({"llama_3_8b": response.content})}]}
 
 def llama_3_70b_script_creator(state: MessagesState):
   messages = state['messages']
@@ -295,7 +295,8 @@ def llama_3_70b_script_creator(state: MessagesState):
   messages = [system_message, human_message]
   response = groq_llm_llama3_70b.invoke(messages)  
   
-  return {"messages": [{"role": "ai", "content": f"llama_3_70b:{response.content}"}]}
+  #return {"messages": [{"role": "ai", "content": f"llama_3_70b:{response.content}"}]}
+  return {"messages": [{"role": "ai", "content": json.dumps({"llama_3_70b": response.content})}]}
 
 def gemma_3_7b_script_creator(state: MessagesState):
   messages = state['messages']
@@ -306,7 +307,8 @@ def gemma_3_7b_script_creator(state: MessagesState):
   messages = [system_message, human_message]
   response = groq_llm_gemma_7b.invoke(messages)  
   
-  return {"messages": [{"role": "ai", "content": f"gemma_3_7b:{response.content}"}]}
+  #return {"messages": [{"role": "ai", "content": f"gemma_3_7b:{response.content}"}]}
+  return {"messages": [{"role": "ai", "content": json.dumps({"gemma_3_7b": response.content})}]}
 
 # judging documentation created agent
 def documentation_steps_evaluator_and_doc_judge(state: MessagesState, apis = apis, code_doc_eval_class = CodeDocumentationEvaluation):
@@ -376,25 +378,29 @@ def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, ev
     dict_llm_codes = {} # name_llm: code_of_that_llm
     
     # Assume the last three messages are the code outputs
-    codes = [ messages[-1].content, messages[-2].content, messages[-3].content]
+    codes = [ 
+      json.loads(messages[-1].content),
+      json.loads(messages[-2].content),
+      json.loads(messages[-3].content)
+    ]
     print("CODES: ", codes)
-    for code in codes:
-      llm_name, llm_code = code.split(":")[0], code.split(":")[1]
-      if llm_name.strip() == "llama_3_8b":
-        print("LLM NAME: ", llm_name)
-        dict_llm_codes[llm_name.strip()] == llm_code.strip()
-      elif llm_name.strip() == "llama_3_70b":
-        print("LLM NAME: ", llm_name)
-        dict_llm_codes[llm_name.strip()] == llm_code.strip()
-      elif llm_name.strip() == "gemma_3_7b":
-        print("LLM NAME: ", llm_name)
-        dict_llm_codes[llm_name.strip()] == llm_code.strip()
-      else:
-        return {"messages": [{"role": "system", "content": "Error: An error occured while trying to put LLM codes in a dictionary before evaluating those."}]}
+    for elem in codes:
+      for llm, code in elem.items():
+        if llm == "llama_3_8b":
+          print("LLM NAME: ", llm)
+          dict_llm_codes[llm] = code
+        elif llm == "llama_3_70b":
+          print("LLM NAME: ", llm)
+          dict_llm_codes[llm] = code
+        elif llm == "gemma_3_7b":
+          print("LLM NAME: ", llm)
+          dict_llm_codes[llm] = code
+        else:
+          return {"messages": [{"role": "system", "content": "Error: An error occured while trying to put LLM codes in a dictionary before evaluating those."}]}
 
  
     # start evaluating with structured output
-    for k, v in dict_llm_code.items():
+    for k, v in dict_llm_codes.items():
       """
        make llm call with structured output to tell if code is YES valid or NO invalid.
       """
@@ -406,13 +412,15 @@ def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, ev
         print("CODE EVALUATION: ", evaluation)
         """
         { 
-          "validity": response.decision,
+          "validity": response.validity,
           "reason": response.reason,
         }
         """
         if "yes" in evaluation["validity"].lower():
+          print(f"Code evaluated as YES: {k}")
           llm_code_valid_responses_list_dict.append({k: v})
         elif "no" in evaluation["validity"].lower():
+          print(f"Code evaluated as NO: {k}")
           llm_code_invalid_responses_list_dict.append({k: v, "reason": evaluation['reason']})
       except Exception as e:
         return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to evaluate if LLM codes are valid:{e}"})}]}
@@ -683,7 +691,7 @@ def rewrite_or_create_requirements_decision(state: MessagesState):
   messages = state["messages"]
   # we receive a DICT[LIST[DICT]]
   evaluations =  json.loads(messages[-1].content)
-  print("EVALUATIONS in conditional edge: ", evaluations, type(evalauations))
+  print("EVALUATIONS in conditional edge: ", evaluations, type(evaluations))
 
   load_dotenv(dotenv_path=".vars.env", override=True)
   retry_code_validation = int(os.getenv("RETRY_CODE_VALIDATION"))
@@ -920,12 +928,12 @@ def code_execution_graph(user_query):
       output = beautify_output(step)
       print(f"Step {count}: {output}")
   
-
-  # subgraph drawing
-  graph_image = user_query_processing_stage.get_graph(xray=True).draw_mermaid_png()
+  '''
+  # subgraph drawing draw_mermaid_png()
+  graph_image = user_query_processing_stage.get_graph(xray=True).draw_mermaid_code()
   with open("code_execution_subgraph.png", "wb") as f:
     f.write(graph_image)
-
+  '''
   
   # this is set from the first node and conditional edge of the graph so that the 'Dusiness Logic' side of the app knows how to manage graph flows
   if "true" in os.getenv("REPORT_NEEDED"):

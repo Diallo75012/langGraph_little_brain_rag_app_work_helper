@@ -165,8 +165,8 @@ def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured
 # structured output class for code evaluator and final script writer
 class CodeScriptEvaluation(BaseModel):
     """Evaluate quality of Python script code created to make API call."""
-    validity: str = Field(default="", description="Say 'YES' if Python script code is evaluated as been well written, formatted, indented to make API call, otherwise answer 'NO'.")
-    reason: str = Field(default="", description="Tell reason why the code is evalauted as being valid if 'YES', OR, reason why it is not valid if 'NO'.")
+    validity: str = Field(default="", description="Say 'YES' if Python script code is evaluated as well written, otherwise 'NO'.")
+    reason: str = Field(default="", description="Tell reason why the code is evaluated as valid or not.")
 
 
 # function for report generation structured output 
@@ -182,10 +182,19 @@ def structured_output_for_code_evaluator_and_final_script_writer(structured_clas
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
+  try:
+    prompt_and_model = prompt | groq_llm_llama3_70b | parser
+  except Exception as e:
+    print("prompt_and_model = prompt | groq_llm_llama3_70b | parser ERROR: ", e)
+    
+  try:
+    response = prompt_and_model.invoke({"query": query})
+    print("tructured_output_for_code_evaluator_and_final_script_writer RESPONSE: ", response)
+  except Exception as e:
+    print("Structured Output Response ERROR: ", e)
+ 
   response_dict = { 
-    "validity": response.decision,
+    "validity": response.validity,
     "reason": response.reason,
   }
   print("'structured_output_for_code_evaluator_and_final_script_writer' structured output response:", response_dict)

@@ -259,7 +259,7 @@ rewrite_or_create_api_code_script_prompt = {
 # prompt for code script evaluation when receiving code from different nodes. We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 code_evaluator_and_final_script_writer_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is. Answer using markdown but return the output strictly as a valid JSON object as follows: {'validity': 'YES/NO', 'reason': 'Your explanation for the evaluation.'}.\n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {

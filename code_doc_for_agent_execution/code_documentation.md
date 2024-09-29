@@ -6,56 +6,63 @@
 
 
       
-# Making an API Call to Get the Age of a Friend using Agify API
+# Getting Started with Agify API
 
-## Introduction
+This documentation provides a step-by-step guide on how to make an API call to the Agify API to retrieve the age of a person based on their name.
 
-In this documentation, we will guide you through the process of making an API call to get the age of a friend based on their name using the Agify API.
+## Step 1: Import Required Libraries
 
-## Prerequisites
+To make an API call, you need to import the `requests` library, which allows you to send HTTP requests using Python.
 
-* Python 3.x installed on your system
-* `requests` library installed (you can install it using `pip install requests`)
-
-## Step 1: Import the `requests` Library
-
-In your Python script, import the `requests` library using the following code:
 ```python
 import requests
 ```
-## Step 2: Set the API Endpoint and Parameters
 
-Set the API endpoint and parameters using the following code:
+## Step 2: Define the API URL
+
+The Agify API requires a name parameter to be passed in the URL. Define the API URL with the name parameter.
+
 ```python
-api_endpoint = 'https://api.agify.io'
+api_url = 'https://api.agify.io?name={name}'
+```
+
+## Step 3: Define the `get_age_by_name` Function
+
+Create a function that takes a name as input, constructs the API URL with the name parameter, sends a GET request to the Agify API, and parses the JSON response to extract the age.
+
+```python
+def get_age_by_name(name):
+    # Construct the API URL with the name parameter
+    url = api_url.format(name=name)
+    
+    # Send a GET request to the Agify API
+    response = requests.get(url)
+    
+    # Parse the JSON response
+    data = response.json()
+    
+    # Extract the age from the response
+    age = data['age']
+    
+    return age
+```
+
+## Step 4: Make the API Call
+
+Call the `get_age_by_name` function with the name 'Junko' to retrieve the age.
+
+```python
 name = 'Junko'
-params = {'name': name}
-```
-## Step 3: Make the API Call
-
-Make a GET request to the API endpoint using the `requests.get()` method and pass the parameters:
-```python
-response = requests.get(api_endpoint, params=params)
-```
-## Step 4: Parse the Response
-
-Parse the response using the `response.json()` method:
-```python
-data = response.json()
-```
-## Step 5: Extract the Age
-
-Extract the age from the response data:
-```python
-age = data['age']
-```
-## Step 6: Print the Age
-
-Print the age of your friend:
-```python
+age = get_age_by_name(name)
 print(f'The age of {name} is {age}')
 ```
-## Conclusion
 
-By following these steps, you should be able to make an API call to get the age of your friend based on their name using the Agify API.
+## Example Output
 
+The output should be the age of the person based on their name.
+
+```
+The age of Junko is 25
+```
+
+Note: Make sure to handle errors and exceptions properly when making API calls.
