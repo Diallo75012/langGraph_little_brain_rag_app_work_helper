@@ -3016,8 +3016,10 @@ Directly generates a PNG image of the graph using its internal visualization eng
 
 
 
+input_variables=['query'] partial_variables={'format_instructions': 'The output should be formatted as a JSON instance that conforms to the JSON schema below.\n\nAs an example, for the schema {"properties": {"foo": {"title": "Foo", "description": "a list of strings", "type": "array", "items": {"type": "string"}}}, "required": ["foo"]}\nthe object {"foo": ["bar", "baz"]} is a well-formatted instance of the schema. The object {"properties": {"foo": ["bar", "baz"]}} is not well-formatted.\n\nHere is the output schema:\n```\n{"description": "Evaluate quality of Python script code created to make API call.", "properties": {"validity": {"title": "Validity", "description": "Say \'YES\' if Python script code is evaluated as well written, otherwise \'NO\'.", "default": "", "type": "string"}, "reason": {"title": "Reason", "description": "Tell reason why the code is evaluated as valid or not.", "default": "", "type": "string"}}}\n```'} template='You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is. Answer using markdown but return the output strictly as a valid JSON object.\n{format_instructions}\n{query}\n'
 
-
+# error to be handled
+Structured Output Response ERROR:  Error code: 429 - {'error': {'message': 'Rate limit reached for model `mixtral-8x7b-32768` in organization `org_01hqrpzhwxfmd8pvzc25nr32hg` on : Limit 500000, Used 500153, Requested 757. Please try again in 2m37.3056s. Visit https://console.groq.com/docs/rate-limits for more information.', 'type': '', 'code': 'rate_limit_exceeded'}}
 
 
 

@@ -830,58 +830,68 @@ prompt_creation(rewrite_or_create_api_code_script_prompt["human"], documentation
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field, validator
-from structured_output.structured_output import (
-  # class for user input analysis
-  AnalyseUserInput,
-  # function to analyze user input
-  structured_output_for_get_user_input
-)
 # utils
 from app_utils import prompt_creation
-from prompts.prompts import get_user_input_prompt
+from prompts.prompts import code_evaluator_and_final_script_writer_prompt
 
 
-class AnalyseUserInput(BaseModel):
-    """Analyse user query in order to identify if only documentation is needed to be created or if Python script code creation is needed."""
-    code: str = Field(default="NO", description="Say YES if user query needs Python script creation. Otherwise say NO. Answer using markdown")
-    onlydoc: str = Field(default="NO", description="Say YES if user query needs only documentation to be created and NOT Python code script. Otherwise say NO. Answer using markdown.")
-    nothing: str = Field(default="NO", description="Analyze the query, And no url or pdf have been identified in the query and no Python script code nor documentation is needed to be created says 'YES'. Meaning that it is just a simple question that doesn't require code or documentation creation.")
-    pdforurl: str = Field(default="NO", description="Analyze the query and identify if there is any pdf or url in it. Answer 'YES' to tell that the query have a .pdf file mentioned in it or an url like address.")
-    
+class CodeScriptEvaluation(BaseModel):
+    """Evaluate quality of Python script code created to make API call."""
+    validity: str = Field(default="", description="Say 'YES' if Python script code is evaluated as well written, otherwise 'NO'.")
+    reason: str = Field(default="", description="Tell reason why the code is evaluated as valid or not.")
 
 
 # function for report generation structured output 
-def structured_output_for_get_user_input(structured_class: AnalyseUserInput, query: str, prompt_template_part: str) -> Dict:
+def structured_output_for_code_evaluator_and_final_script_writer(structured_class: CodeScriptEvaluation, query: str, example_json: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
   prompt = PromptTemplate(
     template=prompt_template_part,
-    input_variables=["query"],
+    input_variables=["query", "example_json"],
     partial_variables={"format_instructions": parser.get_format_instructions()},
   )
   print("Prompt before call structured output: ", prompt)
 
-  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b groq_llm_mixtral_7b
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
+  # And a query intended to prompt a language model to populate the data structure.
+  try:
+    prompt_and_model = prompt | groq_llm_llama3_70b | parser
+  except Exception as e:
+    print("prompt_and_model = prompt | groq_llm_llama3_70b | parser ERROR: ", e)
+    
+  try:
+    response = prompt_and_model.invoke({"query": query, "example_json": example_json})
+    print("tructured_output_for_code_evaluator_and_final_script_writer RESPONSE: ", response)
+  except Exception as e:
+    print("Structured Output Response ERROR: ", e)
+ 
   response_dict = { 
-    "code": response.code,
-    "onlydoc": response.onlydoc,
-    "nothing": response.nothing,
-    "pdforurl": response.pdforurl
+    "validity": response.validity,
+    "reason": response.reason,
   }
-  print("'structured_output_for_documentation_writer' structured output response:", response_dict)
+  print("'structured_output_for_code_evaluator_and_final_script_writer' structured output response:", response_dict)
   return response_dict
 
-
+example_json = {'validity': 'YES/NO', 'reason': 'Your explanation for the evaluation.'}
+evaluator_class = CodeScriptEvaluation
+apis_links = {
+  "joke": "https://official-joke-api.appspot.com/random_joke",
+  "agify": "https://api.agify.io?name=[name]",
+  "dogimage": "https://dog.ceo/api/breeds/image/random",
+}
+user_initial_query = os.getenv("USER_INITIAL_QUERY")
+# api chosen to satisfy query
+api_choice = os.getenv("API_CHOICE")
+v = '''"```python\\nimport requests\\n\\nurl = \\\"your_api_endpoint\\\"\\n\\npayload = {\\\"success\\\": \\\"generate\\\"}\\n\\nresponse = requests.post(url, json=payload)\\n\\n# Check for API response status code\\nif response.status_code == 200:\\n    # API response successful\\n    print(response.json())\\nelse:\\n    # API response failed\\n    print(\\\"Error: API response status code is\\\", response.status_code)\\n```\\n\\n**Explanation:**\\n\\n* **requests** library is used to make HTTP requests.\\n* **url** variable stores the API endpoint.\\n* **payload** dictionary contains the data to be sent to the API.\\n* **requests.post()** method sends a POST request to the API with the given payload.\\n* **response.status_code** checks the API response status code.\\n* **response.json()** method returns the API response as a dictionary.\\n\\n**Note:**\\n\\n* Replace `your_api_endpoint` with the actual API endpoint.\\n* The `success` key-value pair in the payload is based on the provided API documentation.\\n* The response will depend on the API implementation.\"'''
+v2 = '''"### API Call Script\\n```python\\n### Import Required Libraries\\nimport requests\\nimport json\\n\\n### Set API Endpoint and API Key\\napi_endpoint = \\\"https://api.example.com/endpoint\\\"\\napi_key = \\\"your_api_key_here\\\"\\n\\n### Set API Request Headers\\nheaders = {\\n    \\\"Authorization\\\": f\\\"Bearer {api_key}\\\",\\n    \\\"Content-Type\\\": \\\"application/json\\\"\\n}\\n\\n### Set API Request Data\\ndata = {\\n    \\\"key\\\": \\\"value\\\",\\n    \\\"another_key\\\": \\\"another_value\\\"\\n}\\n\\n### Convert Data to JSON\\njson_data = json.dumps(data)\\n\\n### Make API POST Request\\nresponse = requests.post(api_endpoint, headers=headers, data=json_data)\\n\\n### Check API Response Status Code\\nif response.status_code == 200:\\n    print(\\\"API Request Successful!\\\")\\n    print(\\\"Response:\\\", response.json())\\nelse:\\n    print(\\\"API Request Failed!\\\")\\n    print(\\\"Error:\\\", response.text)\\n```\\nReplace `https://api.example.com/endpoint` with your actual API endpoint and `your_api_key_here` with your actual API key. Also, update the `data` dictionary with the required API request data.\\n\\nMake sure to install the `requests` library if you haven't already, by running `pip install requests` in your terminal.\\n\\nRun the script using Python, for example, `python api_call_script.py`.'''
+v3='''"**Python Script to Call API**\\n================================\\n\\n**Imports**\\n```python\\nimport requests\\nimport json\\n```\\n**API Endpoint and Parameters**\\n```python\\napi_endpoint = \\\"https://api.example.com/endpoint\\\"\\napi_params = {\\n    \\\"param1\\\": \\\"value1\\\",\\n    \\\"param2\\\": \\\"value2\\\"\\n}\\n```\\n**API Request**\\n```python\\nresponse = requests.get(api_endpoint, params=api_params)\\n```\\n**Handling Response**\\n```python\\nif response.status_code == 200:\\n    data = json.loads(response.text)\\n    print(json.dumps(data, indent=4))\\nelse:\\n    print(f\\\"Error: {response.status_code}\\\")\\n```\\n**Full Script**\\n```python\\nimport requests\\nimport json\\n\\napi_endpoint = \\\"https://api.example.com/endpoint\\\"\\napi_params = {\\n    \\\"param1\\\": \\\"value1\\\",\\n    \\\"param2\\\": \\\"value2\\\"\\n}\\n\\nresponse = requests.get(api_endpoint, params=api_params)\\n\\nif response.status_code == 200:\\n    data = json.loads(response.text)\\n    print(json.dumps(data, indent=4))\\nelse:\\n    print(f\\\"Error: {response.status_code}\\\")\\n```\\n**Note:** Replace `api_endpoint` and `api_params` with your actual API endpoint and parameters.'''
 last_message = input("Enter your query: ")
 print("last_message: ", last_message)
 # use structured output to decide if we need to generate documentation and code
-query = prompt_creation(get_user_input_prompt["human"], user_initial_query=last_message.strip())
+query = prompt_creation(code_evaluator_and_final_script_writer_prompt["human"], user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis_links, code=v3)
 print("Query created: ", query)
 
-query_analysis = structured_output_for_get_user_input(AnalyseUserInput, query, get_user_input_prompt["system"]["template"]) 
+query_analysis = structured_output_for_code_evaluator_and_final_script_writer(evaluator_class, query, json.dumps(example_json), code_evaluator_and_final_script_writer_prompt["system"]["template"]) 
 print("Response: ", query_analysis)
 
 

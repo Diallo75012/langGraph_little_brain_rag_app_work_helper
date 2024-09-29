@@ -231,7 +231,7 @@ script_creator_prompt = {
     "input_variables": {}
   },
   "human": {
-    "template": "Create a Python script to call the API following the instructions. Make sure that it is in markdown format and have the right indentations and imports.", 
+    "template": "Create a Python script to call the API following the instructions. Make sure that it is in markdown format and have the right indentations and imports. The full code is executable as it is with the script import should be placed in a the same code markdown tag so that it can be parsed and executed as it is. Put the full script in one ```python ``` tag, stop splitting it. We only need the code in one executable block.", 
     "input_variables": {}
   },
   "ai": {
@@ -259,7 +259,7 @@ rewrite_or_create_api_code_script_prompt = {
 # prompt for code script evaluation when receiving code from different nodes. We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 code_evaluator_and_final_script_writer_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is. Answer using markdown but return the output strictly as a valid JSON object as follows: {'validity': 'YES/NO', 'reason': 'Your explanation for the evaluation.'}.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is. Answer using markdown but return the output strictly as a valid JSON object as follows: {example_json}. No need to use the ```json ``` tag, just make sure it is well formatted and it should be fine.\n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {
@@ -275,7 +275,7 @@ code_evaluator_and_final_script_writer_prompt = {
 # prompt for code comparator that will choose only one script before notifying requirements.txt creator node.  We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 choose_code_to_execute_node_if_many_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review. You will be presented different Python script names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what the user want to do.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python script code review. You will be presented different LLM made Python script named with those LLM names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what the user want to do out of those names: {name_choices}.\n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {

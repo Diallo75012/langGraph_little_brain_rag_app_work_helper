@@ -165,30 +165,33 @@ def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured
 # structured output class for code evaluator and final script writer
 class CodeScriptEvaluation(BaseModel):
     """Evaluate quality of Python script code created to make API call."""
-    validity: str = Field(default="", description="Say 'YES' if Python script code is evaluated as well written, otherwise 'NO'.")
+    validity: str = Field(default="", description="Say 'yes' if Python script code is evaluated as well written, otherwise 'no'.")
     reason: str = Field(default="", description="Tell reason why the code is evaluated as valid or not.")
 
 
 # function for report generation structured output 
-def structured_output_for_code_evaluator_and_final_script_writer(structured_class: CodeScriptEvaluation, query: str, prompt_template_part: str) -> Dict:
+'''
+ here we need an example of the required output as the LLM is not escaping characters correctly: example_json passed as json.dumps(example_json)
+'''
+def structured_output_for_code_evaluator_and_final_script_writer(structured_class: CodeScriptEvaluation, query: str, example_json: str, prompt_template_part: str) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
   prompt = PromptTemplate(
     template=prompt_template_part,
-    input_variables=["query"],
+    input_variables=["query", "example_json"],
     partial_variables={"format_instructions": parser.get_format_instructions()},
   )
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
   try:
-    prompt_and_model = prompt | groq_llm_llama3_70b | parser
+    prompt_and_model = prompt | groq_llm_mixtral_7b | parser
   except Exception as e:
     print("prompt_and_model = prompt | groq_llm_llama3_70b | parser ERROR: ", e)
     
   try:
-    response = prompt_and_model.invoke({"query": query})
+    response = prompt_and_model.invoke({"query": query, "example_json": example_json})
     print("tructured_output_for_code_evaluator_and_final_script_writer RESPONSE: ", response)
   except Exception as e:
     print("Structured Output Response ERROR: ", e)
@@ -204,7 +207,7 @@ def structured_output_for_code_evaluator_and_final_script_writer(structured_clas
 # structured output class to choose best code
 class CodeComparison(BaseModel):
     """Compares Python scripts to decide which one is the best if we had to choose only one of those."""
-    name: str = Field(default="", description="The name of the code that you have selected based on how that script have been named.")
+    name: str = Field(default="", description="Codes are labelled with names. Answer the name of the code that you have selected ad being the best out the choices.")
     reason: str = Field(default="", description="Tell reason why you chose that llm code among the different code snippets analyzed.")
 
 
@@ -222,7 +225,7 @@ def structured_output_for_agent_code_comparator_choice(structured_class: CodeCom
 
   # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
   prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
+  response = prompt_and_model.invoke({"query": query, "name_choices": name_choices_json})
   response_dict = { 
     "llm_name": response.name,
     "reason": response.reason,
