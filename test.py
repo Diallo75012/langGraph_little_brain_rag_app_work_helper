@@ -15,17 +15,22 @@ import psycopg2
 
 from typing import Dict, List, Any, Optional, Union
 
+from pydantic import ValidationError
+
 import json
 import ast
 
 import re
+
 
 from prompts.prompts import (
   detect_content_type_prompt,
   summarize_text_prompt,
   generate_title_prompt,
   answer_user_with_report_from_retrieved_data_prompt,
-  structured_outpout_report_prompt
+  structured_outpout_report_prompt,
+  script_creator_prompt,
+  documentation_writer_prompt
 )
 from lib_helpers.chunking_module import create_chunks_from_db_data
 from lib_helpers.query_analyzer_module import detect_content_type
@@ -102,8 +107,9 @@ from langgraph.prebuilt import ToolNode
 from IPython.display import Image, display
 
 
-
-load_dotenv()
+# load env vars
+load_dotenv(dotenv_path='.env', override=False)
+load_dotenv(dotenv_path=".vars.env", override=True)
 
 
 webpage_url = "https://blog.medium.com/how-can-i-get-boosted-33e743431419"
@@ -835,14 +841,14 @@ from app_utils import prompt_creation
 from prompts.prompts import code_evaluator_and_final_script_writer_prompt
 
 
-class CodeScriptEvaluation(BaseModel):
-    """Evaluate quality of Python script code created to make API call."""
-    validity: str = Field(default="", description="Say 'YES' if Python script code is evaluated as well written, otherwise 'NO'.")
-    reason: str = Field(default="", description="Tell reason why the code is evaluated as valid or not.")
+class ScriptCreation(BaseModel):
+    """Analyze requirements to produce a Python script that uses Python standard libraries"""
+    script: str = Field(default="", description="The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
+
 
 
 # function for report generation structured output 
-def structured_output_for_code_evaluator_and_final_script_writer(structured_class: CodeScriptEvaluation, query: str, example_json: str, prompt_template_part: str) -> Dict:
+def structured_output_for_script_creator(structured_class: ScriptCreation, query: str, example_json: str, prompt_template_part: str, llm: ChatGroq) -> Dict:
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -853,27 +859,25 @@ def structured_output_for_code_evaluator_and_final_script_writer(structured_clas
   )
   print("Prompt before call structured output: ", prompt)
 
-  # And a query intended to prompt a language model to populate the data structure.
-  try:
-    prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  except Exception as e:
-    print("prompt_and_model = prompt | groq_llm_llama3_70b | parser ERROR: ", e)
-    
-  try:
-    response = prompt_and_model.invoke({"query": query, "example_json": example_json})
-    print("tructured_output_for_code_evaluator_and_final_script_writer RESPONSE: ", response)
-  except Exception as e:
-    print("Structured Output Response ERROR: ", e)
- 
+  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
+  prompt_and_model = prompt | llm | parser
+  response = prompt_and_model.invoke({"query": query, "example_json": example_json})
+
+  # Preprocess the response to remove markdown code block indicators
+  processed_response = response.script.replace('```python', '').replace('```', '').strip()
+
   response_dict = { 
-    "validity": response.validity,
-    "reason": response.reason,
+    "script": processed_response,
   }
-  print("'structured_output_for_code_evaluator_and_final_script_writer' structured output response:", response_dict)
+  print("'structured_output_for_script_creator' structured output response:", response_dict)
   return response_dict
 
-example_json = {'validity': 'YES/NO', 'reason': 'Your explanation for the evaluation.'}
-evaluator_class = CodeScriptEvaluation
+### VARS
+example_json = json.dumps({
+    "bad example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes.",
+    "good example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."
+  })
+script_creation_class = ScriptCreation
 apis_links = {
   "joke": "https://official-joke-api.appspot.com/random_joke",
   "agify": "https://api.agify.io?name=[name]",
@@ -882,17 +886,16 @@ apis_links = {
 user_initial_query = os.getenv("USER_INITIAL_QUERY")
 # api chosen to satisfy query
 api_choice = os.getenv("API_CHOICE")
-v = '''"```python\\nimport requests\\n\\nurl = \\\"your_api_endpoint\\\"\\n\\npayload = {\\\"success\\\": \\\"generate\\\"}\\n\\nresponse = requests.post(url, json=payload)\\n\\n# Check for API response status code\\nif response.status_code == 200:\\n    # API response successful\\n    print(response.json())\\nelse:\\n    # API response failed\\n    print(\\\"Error: API response status code is\\\", response.status_code)\\n```\\n\\n**Explanation:**\\n\\n* **requests** library is used to make HTTP requests.\\n* **url** variable stores the API endpoint.\\n* **payload** dictionary contains the data to be sent to the API.\\n* **requests.post()** method sends a POST request to the API with the given payload.\\n* **response.status_code** checks the API response status code.\\n* **response.json()** method returns the API response as a dictionary.\\n\\n**Note:**\\n\\n* Replace `your_api_endpoint` with the actual API endpoint.\\n* The `success` key-value pair in the payload is based on the provided API documentation.\\n* The response will depend on the API implementation.\"'''
-v2 = '''"### API Call Script\\n```python\\n### Import Required Libraries\\nimport requests\\nimport json\\n\\n### Set API Endpoint and API Key\\napi_endpoint = \\\"https://api.example.com/endpoint\\\"\\napi_key = \\\"your_api_key_here\\\"\\n\\n### Set API Request Headers\\nheaders = {\\n    \\\"Authorization\\\": f\\\"Bearer {api_key}\\\",\\n    \\\"Content-Type\\\": \\\"application/json\\\"\\n}\\n\\n### Set API Request Data\\ndata = {\\n    \\\"key\\\": \\\"value\\\",\\n    \\\"another_key\\\": \\\"another_value\\\"\\n}\\n\\n### Convert Data to JSON\\njson_data = json.dumps(data)\\n\\n### Make API POST Request\\nresponse = requests.post(api_endpoint, headers=headers, data=json_data)\\n\\n### Check API Response Status Code\\nif response.status_code == 200:\\n    print(\\\"API Request Successful!\\\")\\n    print(\\\"Response:\\\", response.json())\\nelse:\\n    print(\\\"API Request Failed!\\\")\\n    print(\\\"Error:\\\", response.text)\\n```\\nReplace `https://api.example.com/endpoint` with your actual API endpoint and `your_api_key_here` with your actual API key. Also, update the `data` dictionary with the required API request data.\\n\\nMake sure to install the `requests` library if you haven't already, by running `pip install requests` in your terminal.\\n\\nRun the script using Python, for example, `python api_call_script.py`.'''
-v3='''"**Python Script to Call API**\\n================================\\n\\n**Imports**\\n```python\\nimport requests\\nimport json\\n```\\n**API Endpoint and Parameters**\\n```python\\napi_endpoint = \\\"https://api.example.com/endpoint\\\"\\napi_params = {\\n    \\\"param1\\\": \\\"value1\\\",\\n    \\\"param2\\\": \\\"value2\\\"\\n}\\n```\\n**API Request**\\n```python\\nresponse = requests.get(api_endpoint, params=api_params)\\n```\\n**Handling Response**\\n```python\\nif response.status_code == 200:\\n    data = json.loads(response.text)\\n    print(json.dumps(data, indent=4))\\nelse:\\n    print(f\\\"Error: {response.status_code}\\\")\\n```\\n**Full Script**\\n```python\\nimport requests\\nimport json\\n\\napi_endpoint = \\\"https://api.example.com/endpoint\\\"\\napi_params = {\\n    \\\"param1\\\": \\\"value1\\\",\\n    \\\"param2\\\": \\\"value2\\\"\\n}\\n\\nresponse = requests.get(api_endpoint, params=api_params)\\n\\nif response.status_code == 200:\\n    data = json.loads(response.text)\\n    print(json.dumps(data, indent=4))\\nelse:\\n    print(f\\\"Error: {response.status_code}\\\")\\n```\\n**Note:** Replace `api_endpoint` and `api_params` with your actual API endpoint and parameters.'''
-last_message = input("Enter your query: ")
-print("last_message: ", last_message)
+doc = json.loads(os.getenv("DOCUMENTATION_FOUND_ONLINE"))["messages"][0]
+#last_message = input("Enter your query: ")
+#print("last_message: ", last_message)
+
 # use structured output to decide if we need to generate documentation and code
-query = prompt_creation(code_evaluator_and_final_script_writer_prompt["human"], user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis_links, code=v3)
+query = prompt_creation(script_creator_prompt["human"], user_initial_query=os.getenv("USER_INITIAL_QUERY"), apis_links=apis_links, api_choice=api_choice, documentation_found_online=doc)
 print("Query created: ", query)
 
-query_analysis = structured_output_for_code_evaluator_and_final_script_writer(evaluator_class, query, json.dumps(example_json), code_evaluator_and_final_script_writer_prompt["system"]["template"]) 
-print("Response: ", query_analysis)
+response = structured_output_for_script_creator(script_creation_class, query, json.dumps(example_json), script_creator_prompt["system"]["template"], groq_llm_mixtral_7b)
+print("Response: ", response)
 
 
 

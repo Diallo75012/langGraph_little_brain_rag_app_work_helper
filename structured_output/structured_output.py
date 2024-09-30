@@ -4,6 +4,7 @@ import json
 from langchain.output_parsers import PydanticOutputParser #
 from langchain_core.prompts import PromptTemplate #
 from langchain_core.pydantic_v1 import BaseModel, Field, validator #
+from pydantic import ValidationError
 # LLMs
 from langchain_groq import ChatGroq
 from llms.llms import (
@@ -95,8 +96,8 @@ def structured_output_for_get_user_input(structured_class: AnalyseUserInput, que
 ### DOCUMENT WRITER
 # structured output class for documentation writer
 class DocumentationWriter(BaseModel):
-    """Writing Python documentation about how to make API call. Only the instructions is created for another LLM to be able to follow create the wanted scriptand have example."""
-    documentation: str = Field(default="", description="Documentation and guidance for Python script creation in markdown format about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script.")
+    """Writing Python documentation about how to make API call. Only the instructions is created for another LLM to be able to follow create the wanted script and have example."""
+    documentation: str = Field(default="", description="Documentation and guidance for Python script creation in markdown format about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
 
 
 # function for report generation structured output 
@@ -187,22 +188,18 @@ def structured_output_for_script_creator(structured_class: ScriptCreation, query
   prompt_and_model = prompt | llm | parser
   response = prompt_and_model.invoke({"query": query, "example_json": example_json})
 
-  # Preprocess the response to remove markdown code block indicators
-  processed_response = response.script.replace('```python', '').replace('```', '').strip()
-
   response_dict = { 
-    "script": processed_response,
+    "script": response.script,
   }
   print("'structured_output_for_script_creator' structured output response:", response_dict)
   return response_dict
-
 
 
 ### CODE EVALUATION
 # structured output class for code evaluator and final script writer
 class CodeScriptEvaluation(BaseModel):
     """Evaluate quality of Python script code created to make API call."""
-    validity: str = Field(default="", description="Say 'yes' if Python script code is evaluated as well written, otherwise 'no'.")
+    validity: str = Field(default="", description="Say 'yes' if Python script code is evaluated as well written, otherwise 'no'. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
     reason: str = Field(default="", description="Tell reason why the code is evaluated as valid or not.")
 
 
@@ -244,7 +241,7 @@ def structured_output_for_code_evaluator_and_final_script_writer(structured_clas
 # structured output class to choose best code
 class CodeComparison(BaseModel):
     """Compares Python scripts to decide which one is the best if we had to choose only one of those."""
-    name: str = Field(default="", description="Codes are labelled with names. Answer the name of the code that you have selected ad being the best out the choices.")
+    name: str = Field(default="", description="Codes are labelled with names. Answer the name of the code that you have selected ad being the best out the choices. If all codes are the same, just choose one of the available name as value and notify it when providing the reason why you choose that script.")
     reason: str = Field(default="", description="Tell reason why you chose that llm code among the different code snippets analyzed.")
 
 
@@ -274,7 +271,7 @@ def structured_output_for_agent_code_comparator_choice(structured_class: CodeCom
 # structured output class to create requirements.txt
 class CodeRequirements(BaseModel):
     """Analyze Python script to determine what should be in a corresponding requirements.txt file."""
-    requirements: str = Field(default="", description="A markdown representation of what should be content of the code corresponding requirements.txt file content, with right versions and format of a requirements.txt file content.")
+    requirements: str = Field(default="", description="The content of the requirements.txt file, with right versions and format of a requirements.txt file content. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
     needed: str = Field(default="", description="Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file.")
 
 

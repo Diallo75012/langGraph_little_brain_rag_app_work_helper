@@ -432,7 +432,7 @@ def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, ev
             return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while generating codes, all failed with exception:{exceptions}"})}]}
         if llm == "llama_3_8b":
           print("LLM NAME: ", llm)
-          # we don't want code that LLM have splitted each lines with ```python ``` markdown code, we need all in one block otherwise it is not valid_code
+          # we don't want code that LLM have splitted each lines with ```python ``` markdown code, we need all in one block otherwise it is not valid_codes
           dict_llm_codes[llm] = code
         elif llm == "llama_3_70b":
           print("LLM NAME: ", llm)
@@ -477,7 +477,11 @@ def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, ev
 def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_class = CodeComparison):
   # get all the valided codes
   messages = state["messages"]
-  valid_code: List[Dict] = json.loads(messages[-1].content) 
+  # DICT[valid:LIST[DICT[llm, code]], invalid:LIST[DICT[llm, code]]]
+  valid_and_invalid_codes_object = json.loads(messages[-1].content)
+  
+  # get the valid codes out of it: LIST[DICT[llm, code]]
+  valid_codes = valid_and_invalid_codes_object["valid"]
   
   user_initial_query = os.getenv("USER_INITIAL_QUERY")
   # llm names to choose from
@@ -485,16 +489,16 @@ def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_
   
   ## ONE SCRIPT ONLY FORWARD TO CREATE REQUIREMENTS IF NEEDED
   # this mean that if there is only one code snippet int he List[Dict] of valid codes this mean that we have just one script we don't need to compare code
-  if len(valid_code) < 2:
+  if len(valid_codes) < 2:
     print("Len of valid_code samller than 2, so no need to compare code, passing to next node to create requirements.txt")
-    # we just pass to next node the serialized List[Dict[llm_name, script]] 
-    return {"messages": [{"role": "ai", "content": json.dumps({"one_script_only": messages[-1].content})}]}
+    # we just pass to next node the serialized List[Dict[llm_name, script]]
+    return {"messages": [{"role": "ai", "content": json.dumps({"one_script_only": valid_codes})}]}
 
   ## MORE THAN ONE SCRIPT CHOOSE ONE ONLY FROM THE GROUP OF VALID SCRIPTS
   # will regroup all the scripts to be compared
   print("VALID CODES IN CHOICE IF MANY: ", valid_codes)
   FORMATTED_CODES: str = ""
-  for elem in valid_code:
+  for elem in valid_codes:
     for k, v in elem.items():
       name_choices.append(k)
       FORMATTED_CODES += f"'''Script to compare'''\n# LLM Name: {k}\n# Code of LLM name {k}:\n{v}\n\n\n"

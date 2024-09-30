@@ -1315,6 +1315,39 @@ def answer_user(state: MessagesState):
     }
 ```
 
+## structured output error of returned value not JSON seriazable
+
+```bash
+# the error
+TypeError: Object of type OutputParserException is not JSON serializable
+
+```
+
+- use better prompting could help but still need to figure out if more efficient in the `system` prompt template or in the `Field(...decription="...")` of the structure output class: `Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.`
+
+- or maybe we could get the answer and then check if the pydantic parser can parse it , if not we find a coding way to get what we need from the response.
+
+- will try to just improve prompt wiht good and bad example of JSON output
+```bash
+{
+  "bad_example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes."
+}
+{
+  "good_example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."
+}
+```
+
+- or use this in the prompt:
+```
+"You are a Python script expert and will return a Python script formatted strictly as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script. The Python code should be in a single block and fully executable. Replace any markdown delimiters (such as ``` or ```python) with an empty string (''). Example JSON format:
+
+{
+  'script': 'import requests\n\n...'
+}
+
+Ensure that the output is a valid JSON object and does not contain any additional text or explanation."
+
+```
 _____________________________
 
 ##### CHAT VERSION
@@ -3023,9 +3056,18 @@ Structured Output Response ERROR:  Error code: 429 - {'error': {'message': 'Rate
 
  git commit -m "we have improved some prompts, needs more prompt refinement, fixed some code issues and had rate limit of groq, will stop here for the moment or maybe use lmstudio next time. It is not consistent, we have it sometimes stopping in the middle, we have passed the parallel code execution and selection of valid codes and now are at if there is more than one valid code to chose which one will be executed. we need to work on the formatting of that code in the file as we need to get rid of python mardown tags, maybe we will ask for the code but not in markdown to see if it write fine in the file asking for python synthaxed file code."
 
+{
+  'valid': 
+    [
+      {'gemma_3_7b': "import requests\n\ndef get_age(name):\n    url = 'https://api.agify.io?name={}'.format(name)\n    response = requests.get(url)\n    return response.json()['age']\n\nage = get_age('Junko')\nprint('Age:', age)"},
+      {'llama_3_70b': "import requests\n\ndef get_age(name):\n    url = f'https://api.agify.io?name={name}'\n    response = requests.get(url)\n    if response.status_code == 200:\n        data = response.json()\n        return data['age']\n    else:\n        return None\n\nname = 'Junko'\nprint(f'The age of {name} is {get_age(name)}')"},
+      {'llama_3_8b': "import requests\n\ndef get_age(name):\n    url = f'https://api.agify.io?name={name}'\n    response = requests.get(url)\n    data = response.json()\n    return data['age']\n\nname = 'Junko'\nprint(get_age(name))"}
+    ], 
+  'invalid': 
+    []
+}
 
-
-
+DICT[valid:LIST[DICT[llm, code]], invalid:LIST[DICT[llm, code]]]
 
 
 

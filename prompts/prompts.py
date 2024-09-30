@@ -243,7 +243,7 @@ script_creator_prompt = {
 # prompt for judge agent that will evaluate if documentation written by agent need to be rewritten of if it allow for agents to start writting code script based on that document
 rewrite_or_create_api_code_script_prompt = {
   "system": {
-    "template": "You are an expert in Python code documentation review. You decide if the documentation needs to be rewritten as it contains errors or is not explained properly for an LLM to generate a Python script based on those instructions OR you validate the documentation as it is satisfactory to user needs and LLM agents will be able to comprehend/understand the documentation and easily create code following those instructions.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python code documentation review. You decide if the documentation needs to be rewritten as it contains errors or is not explained properly for an LLM to generate a Python script based on those instructions OR you validate the documentation as it is satisfactory to user needs and LLM agents will be able to comprehend/understand the documentation and easily create code following those instructions. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.\n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {
