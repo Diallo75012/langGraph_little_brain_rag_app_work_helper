@@ -5,6 +5,7 @@ from langchain.output_parsers import PydanticOutputParser #
 from langchain_core.prompts import PromptTemplate #
 from langchain_core.pydantic_v1 import BaseModel, Field, validator #
 # LLMs
+from langchain_groq import ChatGroq
 from llms.llms import (
   groq_llm_mixtral_7b,
   groq_llm_llama3_8b,
@@ -161,6 +162,42 @@ def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured
   print("'structured_output_for_documentation_steps_evaluator_and_doc_judge' structured output response:", response_dict)
   return response_dict
 
+
+### CREATE SCRIPTS 
+# structured output class to create requirements.txt
+class ScriptCreation(BaseModel):
+    """Analyze requirements to produce a Python script that uses Python standard libraries"""
+    script: str = Field(default="", description="The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
+
+
+
+# function for report generation structured output 
+def structured_output_for_script_creator(structured_class: ScriptCreation, query: str, example_json: str, prompt_template_part: str, llm: ChatGroq) -> Dict:
+  # Set up a parser + inject instructions into the prompt template.
+  parser = PydanticOutputParser(pydantic_object=structured_class)
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query", "example_json"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
+  prompt_and_model = prompt | llm | parser
+  response = prompt_and_model.invoke({"query": query, "example_json": example_json})
+
+  # Preprocess the response to remove markdown code block indicators
+  processed_response = response.script.replace('```python', '').replace('```', '').strip()
+
+  response_dict = { 
+    "script": processed_response,
+  }
+  print("'structured_output_for_script_creator' structured output response:", response_dict)
+  return response_dict
+
+
+
 ### CODE EVALUATION
 # structured output class for code evaluator and final script writer
 class CodeScriptEvaluation(BaseModel):
@@ -186,7 +223,7 @@ def structured_output_for_code_evaluator_and_final_script_writer(structured_clas
 
   # And a query intended to prompt a language model to populate the data structure.
   try:
-    prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+    prompt_and_model = prompt | groq_llm_llama3_70b | parser
   except Exception as e:
     print("prompt_and_model = prompt | groq_llm_llama3_70b | parser ERROR: ", e)
     

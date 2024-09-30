@@ -57,6 +57,8 @@ if __name__ == "__main__":
   custom_state = GraphStatePersistFlow()
   embedding_flow = ""
   retrieval_flow = ""
+  primary_flow = ""
+  code_execution_flow = ""
   # get user query
   user_query =  input("How can I help you today? ").strip()
   # save query to sdtate

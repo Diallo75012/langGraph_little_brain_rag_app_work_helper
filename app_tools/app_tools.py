@@ -46,7 +46,7 @@ def search(query: str, state: MessagesState = MessagesState()):
 # INTERNET TOOL NODES
 tool_search_node = ToolNode([search])
 # LLMs WITH BINDED TOOLS
-llm_with_internet_search_tool = groq_llm_mixtral_7b.bind_tools([search]) 
+llm_with_internet_search_tool = groq_llm_llama3_70b_tool_use.bind_tools([search]) 
 
 ## API call tool
 @tool
@@ -92,7 +92,7 @@ def dogimages() -> List[str]:
 # API TOOL CHOICE NODE
 tool_agent_decide_which_api_node = ToolNode([jokes, agify, dogimages])
 # LLM BINDED WITH TOOLS
-llm_api_call_tool_choice = groq_llm_mixtral_7b.bind_tools([jokes, agify, dogimages])
+llm_api_call_tool_choice = groq_llm_llama3_70b_tool_use.bind_tools([jokes, agify, dogimages])
 
 
 

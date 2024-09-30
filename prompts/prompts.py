@@ -227,12 +227,12 @@ documentation_writer_prompt = {
 # prompt for parallel llm script creators
 script_creator_prompt = {
   "system": {
-    "template": "", 
+    "template": "You are a Python script expert and analyze user query to craft the best script using Python standard libraries. You script has the right syntaxe, identation,  imports and has no errors. The full code is executable as it is placed all in one block with right synthaxe, indentation and lines. Do NOT split the code with explanation, we only need the code in one executable block. Output strictly as a valid JSON object as follows: {example_json}.\n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "Create a Python script to call the API following the instructions. Make sure that it is in markdown format and have the right indentations and imports. The full code is executable as it is with the script import should be placed in a the same code markdown tag so that it can be parsed and executed as it is. Put the full script in one ```python ``` tag, stop splitting it. We only need the code in one executable block.", 
-    "input_variables": {}
+    "template": "I need a Python script for an API call following this request: {user_initial_query}. The chosen API for the script is: {api_choice}. And the link to that API can be found here: {apis_links}. Use the documentation the following documentation to make the Python script: <DOCUMENTATION>{documentation_found_online}</DOCUMENTATION>", 
+    "input_variables": {"user_initial_query": "", "apis_links": "", "api_choice": "", "documentation_found_online": ""}
   },
   "ai": {
     "template": "", 

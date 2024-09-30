@@ -3021,7 +3021,7 @@ input_variables=['query'] partial_variables={'format_instructions': 'The output 
 # error to be handled
 Structured Output Response ERROR:  Error code: 429 - {'error': {'message': 'Rate limit reached for model `mixtral-8x7b-32768` in organization `org_01hqrpzhwxfmd8pvzc25nr32hg` on : Limit 500000, Used 500153, Requested 757. Please try again in 2m37.3056s. Visit https://console.groq.com/docs/rate-limits for more information.', 'type': '', 'code': 'rate_limit_exceeded'}}
 
-
+ git commit -m "we have improved some prompts, needs more prompt refinement, fixed some code issues and had rate limit of groq, will stop here for the moment or maybe use lmstudio next time. It is not consistent, we have it sometimes stopping in the middle, we have passed the parallel code execution and selection of valid codes and now are at if there is more than one valid code to chose which one will be executed. we need to work on the formatting of that code in the file as we need to get rid of python mardown tags, maybe we will ask for the code but not in markdown to see if it write fine in the file asking for python synthaxed file code."
 
 
 
