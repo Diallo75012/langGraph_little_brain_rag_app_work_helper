@@ -67,7 +67,7 @@ Maybe will have to move those functions OR to a file having all node functions O
 # utils
 from app_utils import (
   prompt_creation,
-  call_llm
+  llm_call
 )
 # Docker execution code
 from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker
@@ -260,20 +260,29 @@ def documentation_writer(state: MessagesState, apis = apis, doc_writer_class = D
   query = prompt_creation(documentation_writer_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=last_message)
   # get the answer as we want it using structured output and injecting the 'human' prompt in the system one
   try:
+    '''
     written_documentation = structured_output_for_documentation_writer(doc_writer_class, query, documentation_writer_prompt["system"]["template"])
     print("Writen_documentation: ", type(written_documentation), written_documentation)
+    '''
     
-    # parse content, here doc is str and written_documentation a dict
+    schema={
+      "documentation": "documentation and guidance for Python script creation about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script. use one unique block valid JSON str to answer."
+    }
+    written_documentation = llm_call(query, documentation_writer_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+    print("Writen_documentation: ", type(written_documentation), written_documentation)
+
+    # parse content, here doc is dict
+    # written_documentation a dict and the documentation is a dict as well as asked to llm in prompt to have a valid JSON when writting documentation. This was the trick to not get errors because of code in documentation
     doc = written_documentation["documentation"]
     print("DOC: ", type(doc), doc)
   
     # write the documentation to a file
     with open(os.getenv("CODE_DOCUMENTATION_FILE_PATH"), "w", encoding="utf-8") as code_doc:
       code_doc.write("""'''This file contains the documentation in how to write a mardown Python script to make API to satisfy user request.Make sure that the script is having the right imports, indentations, uses Python standard libraries and do not have any error before starting writing it.'''\n\n""")
-      code_doc.write(doc)
+      code_doc.write(json.dumps(doc))
     
     # go the judge and documentation evaluator agent
-    return {"messages": [{"role": "ai", "content": doc}]}
+    return {"messages": [{"role": "ai", "content": json.dumps(doc)}]}
   except Exception as e:
     print("DOCUMENTATION WRITER ERROR TRIGGERED")
     return {"messages": [{"role": "ai", "content": f"error while trying to write documentation from internet search information about {api_choice} api: {e}"}]}
@@ -383,6 +392,7 @@ def documentation_steps_evaluator_and_doc_judge(state: MessagesState, apis = api
   query = prompt_creation(rewrite_or_create_api_code_script_prompt["human"], documentation=documentation, user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis_links)
   # get the answer as we want it using structured output
   try:
+    '''
     decision = structured_output_for_documentation_steps_evaluator_and_doc_judge(code_doc_eval_class, query, rewrite_or_create_api_code_script_prompt["system"]["template"])
     print("\n\n\nDECISION: ", decision, type(decision))
     """
@@ -393,6 +403,15 @@ def documentation_steps_evaluator_and_doc_judge(state: MessagesState, apis = api
       "stage": response.stage,
       }
     """
+    '''
+
+    schema={
+      "decision": "Analyse the documentation created instruction and evaluate if it needs to be written again  or if it is validated as good documentation. Answer usingjust one word, 'rewrite' to request documentation to be witten again or 'generate' to validate as good documentation for LLM Agent to understand it and generate code easily following those instructions. use str to answer.",
+      "reason": "Reasons motivating decision. use str to answer.",
+      "stage": "indicate here which stage need to be done again using just one word: 'internet' for internet search to get more information as poorly informed OR 'rewrite' for just rewriting the documentation in a better way. use str to answer."
+    }
+    decision = llm_call(query, rewrite_or_create_api_code_script_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+
     if decision["decision"] == "rewrite":
       return {"messages": [{"role": "ai", "content": json.dumps({"disagree":decision})}]} # use spliting technique to get what is wanted 
     elif decision["decision"] == "generate":
@@ -557,8 +576,9 @@ def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_
 def create_requirements_for_code(state: MessagesState, requirements_creation_class = CodeRequirements):
   # get the valided code
   messages = state["messages"]
-  #llm_name = json.loads(messages[-1])["llm_name"]
-  llm_name = "gemma_3_7b"
+  llm_name = json.loads(messages[-1])["llm_name"]
+  # just for testing this node to the end
+  #llm_name = "gemma_3_7b"
   
   #user_initial_query = os.getenv("USER_INITIAL_QUERY")
 
@@ -614,7 +634,7 @@ def code_execution_node(state: MessagesState):
   last_message = json.loads(messages[-1].content)
   print("last message: ", last_message)
   
-  # get requirements file name and llm name
+  # get requirements file name and llm name: this is the full path -> folder and docker file name that have been created in `create_requirements_for_code` node as `sandbox_requirement_file`
   if last_message["success"]["requirements"]:
     requirements_file_name = last_message["success"]["requirements"]
   llm_name = last_message["success"]["llm_name"]
@@ -630,22 +650,22 @@ def code_execution_node(state: MessagesState):
     # returns a tupel Tuple[stdout, stderr] , scripts present at: ./docker_agent/agents_scripts/{script_path}
     agents_scripts_dir = os.getenv("AGENTS_SCRIPTS_FOLDER")
     for agent_script_file_name in os.listdir(agents_scripts_dir):
-      if agent_script_file_name.startwith(f"agent_code_execute_in_docker_{llm_name}"):
+      if agent_script_file_name.startswith(f"agent_code_execute_in_docker_{llm_name}"):
         print("Script file name: ", agent_script_file_name)
         try:
           # returns a Tuple[stdout, stderr]
           if requirements_file_name:
-            stdout, stderr = run_script_in_docker(f"{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}", f"{agents_scripts_dir}/{requirements_file_name}")
+            stdout, stderr = run_script_in_docker(f"{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}", f"{requirements_file_name}")
           else:
             stdout, stderr = run_script_in_docker(f"{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}")
           if stdout:
-            stdout_list.append({
+            stdout_list_dict.append({
               "script_file_path": f"{agents_scripts_dir}/{agent_script_file_name}",
               "llm_script_origin": llm_name,
               "output": f"success:{stdout}",  
             })
           if stderr:
-            stderr_list.append({
+            stderr_list_dict.append({
               "script_file_path": f"{agents_scripts_dir}/{agent_script_file_name}",
               "llm_script_origin": llm_name,
               "output": f"error:{stderr}",  
@@ -767,10 +787,12 @@ def code_or_doc_needed_or_not(state: MessagesState):
 def evaluate_doc_or_error(state: MessagesState):
   messages = state["messages"]
   last_message = messages[-1].content
+  print("Message content in 'evaluate_doc_or_error': ", last_message)
   
   if "error" in last_message:
     return "error_handler"
   else:
+    print("GOING TO DOC QUALITY JUDGE")
     return "documentation_steps_evaluator_and_doc_judge"
     
 
@@ -876,7 +898,7 @@ def success_execution_or_retry_or_return_error(state: MessagesState):
   messages = state["messages"]
   # unwrap the previous output results of code execution
   # LIST[DICT] : {"stdout": stdout_list_dict, "stderr": stderr_list_dict, "exception": exception_error_log_list_dict}
-  code_execution_result = json.load(messages[-1].content)
+  code_execution_result = json.loads(messages[-1].content)
 
   # get the results list dicts having keys: script_file_path, llm_script_orign and output, check output if it has success, error or exception in the message
   # if we have at least one good code execution we want to analyze it with next node and know which code it was, from which llm
@@ -956,7 +978,7 @@ workflow = StateGraph(MessagesState)
 
 # nodes
 workflow.add_node("error_handler", error_handler) # here we need to manage error handler to not just stop the app but loop bas to some nodes with the reasons and check retry
-'''
+
 workflow.add_node("get_user_input", get_user_input)
 workflow.add_node("tool_api_choose_agent", tool_api_choose_agent)
 workflow.add_node("tool_agent_decide_which_api_node", tool_agent_decide_which_api_node)
@@ -969,7 +991,7 @@ workflow.add_node("llama_3_70b_script_creator", llama_3_70b_script_creator)
 workflow.add_node("gemma_3_7b_script_creator", gemma_3_7b_script_creator)
 workflow.add_node("code_evaluator_and_final_script_writer", code_evaluator_and_final_script_writer)
 workflow.add_node("choose_code_to_execute_node_if_many", choose_code_to_execute_node_if_many)
-'''
+# have run from here to the end and worked fine with docker code execution
 workflow.add_node("create_requirements_for_code", create_requirements_for_code)
 workflow.add_node("code_execution_node", code_execution_node)
 workflow.add_node("successful_code_execution_management", successful_code_execution_management)
@@ -977,7 +999,6 @@ workflow.add_node("error_analysis_node", error_analysis_node)
 workflow.add_node("inter_graph_node", inter_graph_node)
 
 # edges
-'''
 workflow.set_entry_point("get_user_input")
 workflow.add_conditional_edges(
   "get_user_input",
@@ -1011,8 +1032,9 @@ workflow.add_conditional_edges(
   "choose_code_to_execute_node_if_many",
   create_requirements_or_error
 )
-'''
-workflow.set_entry_point("create_requirements_for_code")
+
+# just to test the graph from this node to the end and see the docker sandbox code execution
+# workflow.set_entry_point("create_requirements_for_code")
 workflow.add_conditional_edges(
   "create_requirements_for_code",
   execute_code_or_error

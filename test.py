@@ -34,7 +34,8 @@ from prompts.prompts import (
   create_requirements_for_code_prompt,
   error_analysis_node_prompt,
   choose_code_to_execute_node_if_many_prompt,
-  code_evaluator_and_final_script_writer_prompt
+  code_evaluator_and_final_script_writer_prompt,
+  rewrite_or_create_api_code_script_prompt
 )
 from lib_helpers.chunking_module import create_chunks_from_db_data
 from lib_helpers.query_analyzer_module import detect_content_type
@@ -910,11 +911,11 @@ requirements_file_content = "requests\nflask\nnumpy\n"
 error_message = "final age need be returned like: '{age} is too old now!'. and the requirements.txt have packages that are not needed. please correct all those errors."
 with open("./docker_agent/agents_scripts/agent_code_execute_in_docker_gemma_3_7b.py", "r", encoding="utf-8") as s:
   code = s.read()
-query = prompt_creation(script_creator_prompt["human"], user_initial_query=user_initial_query, apis_links=apis_links, api_choice=api_choice, documentation_found_online=documentation_found_online)
+query = prompt_creation(documentation_writer_prompt["human"], user_initial_query=user_initial_query, apis_links=apis_links, api_choice=api_choice, documentation_found_online=documentation_found_online)
 schema={
-    "script": "The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. use str to answer."
+    "documentation": "documentation and guidance for Python script creation about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script. use valid JSON str to answer."
 }
-response = llm_call(query, script_creator_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+response = llm_call(query, documentation_writer_prompt["system"]["template"], schema, groq_llm_llama3_70b)
 print("Response: ", response)
 
 

@@ -211,11 +211,11 @@ find_documentation_online_agent_prompt = {
 # prompt for documentation_writer that will be using structured output to have a mardown formatted documentation
 documentation_writer_prompt = {
   "system": {
-    "template": "You are an expert in Python code documentation writing and creation. You will analyse information for the required documentation and will understand what user wants. You write instruction like documentation so that LLM agent called will understand and provide the corresponding code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it. \n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python code documentation writing and creation. You will analyse information for the required documentation and will understand what user wants. You write instruction like documentation so that LLM agent called will understand and provide the corresponding code. So just ouput the documentation with all steps for Python developer to understand how to write the script. use valid JSON str to answer. Therefore, DO NOT write the script, just the documentation and guidance in how to do it. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "I wanted a Python script to call an API: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Our agent chosen this api to satisfy user request: <API CHOICE>{api_choice}</API CHOICE>; and found some documentation online: <DOCUMENTATION FOUND ONLINE>{documentation_found_online}</DOCUMENTATION FOUND ONLINE>. Can you write detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <API LINKS>{apis_links}</API LINKS>.", 
+    "template": "I wanted a Python script to call an API: {user_initial_query}. Our agent chosen this api to satisfy user request: {api_choice}; and found some documentation online: {documentation_found_online}. Can you write detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: {apis_links}.", 
     "input_variables": {"user_initial_query": "", "apis_links": "", "api_choice": "", "documentation_found_online": ""}
   },
   "ai": {

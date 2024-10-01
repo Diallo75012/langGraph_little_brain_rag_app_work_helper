@@ -1,0 +1,7 @@
+# Docker fly created on the fly to execute code in docker by agents.
+FROM python:3.9-slim
+COPY ./docker_agent/agents_scripts/gemma_3_7b_requirements.txt .
+RUN pip install --no-cache-dir -r gemma_3_7b_requirements.txt
+COPY ./docker_agent/agents_scripts/agent_code_execute_in_docker_gemma_3_7b.py /app/agent_code_execute_in_docker_gemma_3_7b.py
+WORKDIR /app
+CMD ["python", "agent_code_execute_in_docker_gemma_3_7b.py"]

@@ -4,11 +4,13 @@
 
 import requests
 
-def get_age(name):
-    url = f'https://api.agify.io?name={name}'
-    response = requests.get(url)
-    data = response.json()
-    return data['age']
+url = 'https://api.agify.io/?name=Junko'
 
-name = 'Junko'
-print(get_age(name))
+response = requests.get(url)
+
+if response.status_code == 200:
+    data = response.json()
+    age = data['age']
+    print(f"The age of your friend Junko is: {age}")
+else:
+    print("Error: Unable to fetch the data. Please check the URL and try again.")

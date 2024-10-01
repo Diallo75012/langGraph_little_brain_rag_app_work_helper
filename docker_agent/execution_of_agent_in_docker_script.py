@@ -33,23 +33,26 @@ def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_fil
         docker_file.write("FROM python:3.9-slim\n")
         if requirements_script_file_path != "":
           docker_file.write(f"COPY {requirements_script_file_path} .\n")
-          docker_file.write(f"RUN pip install --no-cache-dir -r {requirements_script_file_path}\n")
-        docker_file.write(f"COPY {agent_script_file_path} /app/{agent_script_file_path}\n")
+          requirements_file_name = requirements_script_file_path.split("/")[-1].strip()
+          docker_file.write(f"RUN pip install --no-cache-dir -r {requirements_file_name}\n")
+        llm_script_file_name = agent_script_file_path.split("/")[-1].strip()
+        docker_file.write(f"COPY {agent_script_file_path} /app/{llm_script_file_name}\n")
         # if env vars in workflow add this line and make agent creating it
         # docker_file.write("COPY .sandbox.env /app/.sandbox.env\n")
         docker_file.write("WORKDIR /app\n")
-        docker_file.write('CMD ["python", "{agent_script_file_path}"]')
+        docker_file.write(f'CMD ["python", "{llm_script_file_name}"]')
 
     try:
         # Build the Docker image
         build_command = ['docker', 'build', '-t', 'sandbox-python', '-f', f'{name_of_dockerfile_to_run_script}', '.']
         subprocess.run(build_command, check=True)
 
-        # Run the Docker container and capture the output
+        # Run the Docker container and capture the output and delete the container
         run_command = ['docker', 'run', '--rm', 'sandbox-python']
         result = subprocess.run(run_command, capture_output=True, text=True)
 
         stdout, stderr = result.stdout, result.stderr
+
         with open("sandbow_docker_execution_logs.md", "w", encoding="utf-8") as script_execution_result:
           script_execution_result.write("# Python script executed in docker, this is the result of captured stdout and stderr")
           script_execution_result.write("""
@@ -59,17 +62,24 @@ def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_fil
             stderr str: the standard error of the script execution. If this value is not empty answer with the content of the value with a suggestion in how to fix it. Answer using mardown and put a JSON of the error message with key ERROR all between this ```markdown ```. 
           """)
           script_execution_result.write(f"\n\nstdout: {stdout}\nstderr: {stderr}")
-
-    except subprocess.CalledProcessError as e:
-        stdout, stderr = '', str(e)
-    finally:
+        
         # Remove the Docker image
         cleanup_command = ['docker', 'rmi', '-f', 'sandbox-python']
         subprocess.run(cleanup_command, check=False)
+        
+        # Return the captured output
+        return stdout, stderr
 
-    # Return the captured output
-    return stdout, stderr
-
+    except subprocess.CalledProcessError as e:
+        stdout, stderr = '', str(e)
+   
+    finally:
+        # Safely attempt to remove the Docker image only if it exists
+        try:
+            cleanup_command = ['docker', 'rmi', '-f', 'sandbox-python']
+            subprocess.run(cleanup_command, check=False)
+        except subprocess.CalledProcessError as e:
+            print(f"Image is not there so all good! We tried to cleanup if any image .. Error during Docker cleanup: {e}")
 
 '''
 if __name__ == "__main__":

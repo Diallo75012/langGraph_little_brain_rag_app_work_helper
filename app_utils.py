@@ -178,6 +178,40 @@ def string_to_dict(string: str) -> Dict[str, Any]:
     except (SyntaxError, ValueError) as e:
         raise ValueError(f"Error converting string to dictionary: {e}")
 
+'''
+# alternative to above function to put in JSON format the response, but worry to see some other outputs not work well need to test
+# for the moment we use prompts and it works fine we just said: `use valid JSON str to answer`
+def string_to_dict(string: str) -> Dict[str, Any]:
+    """
+    Converts a string representation of a dictionary to an actual dictionary.
+    First tries json.loads() and falls back to ast.literal_eval() if needed.
+
+    Args:
+    string (str): The string representation of a dictionary.
+
+    Returns:
+    Dict[str, Any]: The corresponding dictionary.
+    """
+    final_dict_key_lowercase = {}
+    try:
+        # First, try to parse it using JSON.
+        dictionary = json.loads(string)
+    except json.JSONDecodeError:
+        # If that fails, fallback to using ast.literal_eval for Python-like dicts.
+        try:
+            dictionary = ast.literal_eval(string)
+        except (SyntaxError, ValueError) as e:
+            raise ValueError(f"Error converting string to dictionary: {e}")
+    
+    # Ensure the result is a dictionary and convert keys to lowercase.
+    if isinstance(dictionary, dict):
+        for k, v in dictionary.items():
+            final_dict_key_lowercase[k.lower()] = v
+        return final_dict_key_lowercase
+    else:
+        raise ValueError("The provided string does not represent a dictionary.")
+'''
+
 # if needed this will tell if the string is url or pdf
 def is_url_or_pdf(input_string: str) -> str:
     """
