@@ -165,11 +165,14 @@ def string_to_dict(string: str) -> Dict[str, Any]:
     Returns:
     Dict[str, Any]: The corresponding dictionary.
     """
+    final_dict_key_lowercase = {}
     try:
         # Safely evaluate the string as a Python expression
         dictionary = ast.literal_eval(string)
         if isinstance(dictionary, dict):
-            return dictionary
+            for k, v in dictionary.items():
+              final_dict_key_lowercase[k.lower()] = v 
+            return final_dict_key_lowercase
         else:
             raise ValueError("The provided string does not represent a dictionary.")
     except (SyntaxError, ValueError) as e:
@@ -664,7 +667,43 @@ def rewrite_or_create_api_code_script(state: MessagesState, apis: Dict[str,str])
     return {"messages": [{"role": "ai", "content": f"error:{response.content}"}]}
 
   
+### FUNCTION TO CALL LLMS INSTEAD OF USING STRUCTURED OUTPUT
+def llm_call(query: str, prompt_template_part: str, schema: str, llm: ChatGroq) -> Dict:
 
+
+  prompt = PromptTemplate(
+    template=prompt_template_part,
+    input_variables=["query", "response_schema"],
+    partial_variables={},
+  )
+  print("Prompt before call structured output: ", prompt)
+
+  # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
+  try:
+    prompt_and_model = prompt | groq_llm_mixtral_7b
+    response = prompt_and_model.invoke({"query": query, "response_schema": schema})
+    print("RESPONSE: ", response.content)
+    # parse content from dict
+    if "```" in response.content:
+      response_parsed = response.content.split("```")[1].strip("markdown").strip()
+    else:
+      response_parsed = response.content
+    # transform to dict
+    response_content_to_dict = string_to_dict(response_parsed)
+    print("Response content dict: ", response_content_to_dict)
+    return response_content_to_dict
+    '''
+    # get the fields content
+    response_dict = { 
+      "requirements": response_content_to_dict["requirements"],
+      "needed": response_content_to_dict["needed"],
+    }
+    print("'structured_output_for_create_requirements_for_code' structured output response:", response_dict, type(response_dict))
+    return response_dict
+    '''
+    
+  except Exception as e:
+    raise Exception(f"An error occured while calling llm: {e}")
 
 
 

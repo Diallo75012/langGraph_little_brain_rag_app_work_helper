@@ -71,6 +71,7 @@ class AnalyseUserInput(BaseModel):
 
 # function for report generation structured output 
 def structured_output_for_get_user_input(structured_class: AnalyseUserInput, query: str, prompt_template_part: str) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -82,26 +83,42 @@ def structured_output_for_get_user_input(structured_class: AnalyseUserInput, que
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
-  response_dict = { 
-    "code": response.code,
-    "doc": response.doc,
-    "nothing": response.nothing,
-    "pdforurl": response.pdforurl
-  }
-  print("'structured_output_for_get_user_input' structured output response:", response_dict)
-  return response_dict
+  try:
+    prompt_and_model = prompt | groq_llm_llama3_70b | parser
+    response = prompt_and_model.invoke({"query": query})
+
+    response_dict = { 
+      "code": response.code,
+      "doc": response.doc,
+      "nothing": response.nothing,
+      "pdforurl": response.pdforurl
+    }
+    print("'structured_output_for_get_user_input' structured output response:", response_dict)
+    return response_dict
+
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response 'structured_output_for_get_user_input': {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
+  except Exception as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'structured_output_for_get_user_input': {e}")
 
 ### DOCUMENT WRITER
 # structured output class for documentation writer
 class DocumentationWriter(BaseModel):
-    """Writing Python documentation about how to make API call. Only the instructions is created for another LLM to be able to follow create the wanted script and have example."""
-    documentation: str = Field(default="", description="Documentation and guidance for Python script creation in markdown format about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
+    """
+      Writing Python documentation about how to make API call. Only the instructions is created for another LLM to be able to follow create the wanted script and have example.
+      Answers should strictly be as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script.
+    """
+    documentation: str = Field(default="", description="Documentation and guidance for Python script creation in about what the user needs. Just ouput the documentation with all steps for Python developer to understand how to write the script. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
 
 
 # function for report generation structured output 
 def structured_output_for_documentation_writer(structured_class: DocumentationWriter, query: str, prompt_template_part: str) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -113,10 +130,10 @@ def structured_output_for_documentation_writer(structured_class: DocumentationWr
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
-  print("REEEEEEESSSSPONSEEEEEEEEEEEEEEE:: ", response)
   try:
+    prompt_and_model = prompt | groq_llm_llama3_70b | parser
+    response = prompt_and_model.invoke({"query": query})
+      # return dictionary if all good
     response_dict = { 
       "documentation": response.documentation,
     }
@@ -126,22 +143,34 @@ def structured_output_for_documentation_writer(structured_class: DocumentationWr
   # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
   except json.JSONDecodeError as e:
     with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
-      conditional.write(f"\n\nInvalid JSON response: {response}. Error: {e}\n\n")
+      conditional.write(f"\n\nInvalid JSON response 'structured_output_for_documentation_writer': {response}. Error: {e}\n\n")
     raise ValueError(f"Invalid JSON: {e}")
-
-
+  except Exception as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'structured_output_for_documentation_writer': {e}")
 
 
 ### DOCUMENTATION EVALUATION
 # structured output class for documentation steps evaluator and doc judge
 class CodeDocumentationEvaluation(BaseModel):
-    """Evaluate quality of documentation for code generation created for other LLM agents to be able to generate Python scripts following the those instructions."""
+    """
+      Evaluate quality of documentation for code generation created for other LLM agents to be able to generate Python scripts following the those instructions.
+      Answers should strictly be as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script. The Python code should be in a single block and fully executable. Replace any markdown delimiters (such as ``` or ```python) with an empty string ('').
+      Example Bad JSON format: {"bad_example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes."}.
+      Example Good JSON format:
+      {'script': 'import requests\n\n...'}
+       OR  
+      {"good_example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."}
+Ensure that the output is a valid JSON object and does not contain any additional text or explanation."
+    """
     decision: str = Field(default="", description="Analyse the documentation created instruction and evaluate if it needs to be written again  or if it is validated as good documentation. Answer 'rewrite' to request documentation to be witten again or 'generate' to validate as good documentation for LLM Agent to understand it and generate code easily following those instructions.")
     reason: str = Field(default="", description="Reasons motivating decision.")
     stage: str =  Field(default="", description="if decision is 'rewrite' indicate here which stage need to be done again: 'internet' for internet search to get more information as poorly informed or 'rewrite' for just rewriting the documentation in a better way.")
 
 # function for report generation structured output 
 def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured_class: CodeDocumentationEvaluation, query: str, prompt_template_part: str) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -153,27 +182,49 @@ def structured_output_for_documentation_steps_evaluator_and_doc_judge(structured
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure.
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
-  response_dict = { 
-    "decision": response.decision,
-    "reason": response.reason,
-    "stage": response.stage,
-  }
-  print("'structured_output_for_documentation_steps_evaluator_and_doc_judge' structured output response:", response_dict)
-  return response_dict
+  try:
+    prompt_and_model = prompt | groq_llm_llama3_70b | parser
+    response = prompt_and_model.invoke({"query": query})
+
+    response_dict = { 
+      "decision": response.decision,
+      "reason": response.reason,
+      "stage": response.stage,
+    }
+    print("'structured_output_for_documentation_steps_evaluator_and_doc_judge' structured output response:", response_dict)
+    return response_dict
+
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response 'CodeDocumentationEvaluation': {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
+  except Exception as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'CodeDocumentationEvaluation': {e}")
 
 
 ### CREATE SCRIPTS 
 # structured output class to create requirements.txt
 class ScriptCreation(BaseModel):
-    """Analyze requirements to produce a Python script that uses Python standard libraries"""
-    script: str = Field(default="", description="The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
+    """
+      Analyze requirements to produce a Python script that uses Python standard libraries.
+      Answers should strictly be as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script. The Python code should be in a single block and fully executable. Replace any markdown delimiters (such as ``` or ```python) with an empty string ('').
+      Example Bad JSON format: {"bad_example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes."}.
+      Example Good JSON format:
+      {'script': 'import requests\n\n...'}
+       OR  
+      {"good_example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."}
+Ensure that the output is a valid JSON object and does not contain any additional text or explanation."
+    """
+    script: str = Field(default="", description="The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those with '' (empty space). This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
 
 
 
 # function for report generation structured output 
 def structured_output_for_script_creator(structured_class: ScriptCreation, query: str, example_json: str, prompt_template_part: str, llm: ChatGroq) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -185,20 +236,39 @@ def structured_output_for_script_creator(structured_class: ScriptCreation, query
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
-  prompt_and_model = prompt | llm | parser
-  response = prompt_and_model.invoke({"query": query, "example_json": example_json})
+  try:
+    prompt_and_model = prompt | llm | parser
+    response = prompt_and_model.invoke({"query": query, "example_json": example_json})
 
-  response_dict = { 
-    "script": response.script,
-  }
-  print("'structured_output_for_script_creator' structured output response:", response_dict)
-  return response_dict
+    response_dict = { 
+      "script": response.script,
+    }
+    print("'structured_output_for_script_creator' structured output response:", response_dict)
+    return response_dict
 
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response 'structured_output_for_script_creator': {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
+  except Exception as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'structured_output_for_script_creator': {e}")
 
 ### CODE EVALUATION
 # structured output class for code evaluator and final script writer
 class CodeScriptEvaluation(BaseModel):
-    """Evaluate quality of Python script code created to make API call."""
+    """
+      Evaluate quality of Python script code created to make API call.
+      Answers should strictly be as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script. The Python code should be in a single block and fully executable. Replace any markdown delimiters (such as ``` or ```python) with an empty string ('').
+      Example Bad JSON format: {"bad_example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes."}.
+      Example Good JSON format:
+      {'script': 'import requests\n\n...'}
+       OR  
+      {"good_example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."}
+Ensure that the output is a valid JSON object and does not contain any additional text or explanation."
+    """
     validity: str = Field(default="", description="Say 'yes' if Python script code is evaluated as well written, otherwise 'no'. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
     reason: str = Field(default="", description="Tell reason why the code is evaluated as valid or not.")
 
@@ -208,6 +278,7 @@ class CodeScriptEvaluation(BaseModel):
  here we need an example of the required output as the LLM is not escaping characters correctly: example_json passed as json.dumps(example_json)
 '''
 def structured_output_for_code_evaluator_and_final_script_writer(structured_class: CodeScriptEvaluation, query: str, example_json: str, prompt_template_part: str) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -221,32 +292,45 @@ def structured_output_for_code_evaluator_and_final_script_writer(structured_clas
   # And a query intended to prompt a language model to populate the data structure.
   try:
     prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  except Exception as e:
-    print("prompt_and_model = prompt | groq_llm_llama3_70b | parser ERROR: ", e)
-    
-  try:
     response = prompt_and_model.invoke({"query": query, "example_json": example_json})
-    print("tructured_output_for_code_evaluator_and_final_script_writer RESPONSE: ", response)
+
+    response_dict = { 
+      "validity": response.validity,
+      "reason": response.reason,
+    }
+    print("'structured_output_for_code_evaluator_and_final_script_writer' structured output response:", response_dict)
+    return response_dict
+
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response 'structured_output_for_code_evaluator_and_final_script_writer': {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
   except Exception as e:
-    print("Structured Output Response ERROR: ", e)
- 
-  response_dict = { 
-    "validity": response.validity,
-    "reason": response.reason,
-  }
-  print("'structured_output_for_code_evaluator_and_final_script_writer' structured output response:", response_dict)
-  return response_dict
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'structured_output_for_code_evaluator_and_final_script_writer': {e}")
 
 ### CHOOSE CODE BEST CODE AMONG SEVERAL CODE SNIPPETS
 # structured output class to choose best code
 class CodeComparison(BaseModel):
-    """Compares Python scripts to decide which one is the best if we had to choose only one of those."""
-    name: str = Field(default="", description="Codes are labelled with names. Answer the name of the code that you have selected ad being the best out the choices. If all codes are the same, just choose one of the available name as value and notify it when providing the reason why you choose that script.")
+    """
+      Compares Python scripts to decide which one is the best if we had to choose only one of those.
+      Answers should strictly be as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script. The Python code should be in a single block and fully executable. Replace any markdown delimiters (such as ``` or ```python) with an empty string ('').
+      Example Bad JSON format: {"bad_example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes."}.
+      Example Good JSON format:
+      {'script': 'import requests\n\n...'}
+       OR  
+      {"good_example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."}
+Ensure that the output is a valid JSON object and does not contain any additional text or explanation."
+    """
+    name: str = Field(default="", description="Codes are labelled with names. Answer the name of the code that you have selected as being the best out the choices. If all codes are the same, just choose one of the available name as value and notify it when providing the reason why you choose that script. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
     reason: str = Field(default="", description="Tell reason why you chose that llm code among the different code snippets analyzed.")
 
 
 # function for report generation structured output 
 def structured_output_for_agent_code_comparator_choice(structured_class: CodeComparison, query: str, prompt_template_part: str) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -258,26 +342,49 @@ def structured_output_for_agent_code_comparator_choice(structured_class: CodeCom
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query, "name_choices": name_choices_json})
-  response_dict = { 
-    "llm_name": response.name,
-    "reason": response.reason,
-  }
-  print("'structured_output_for_agent_code_comparator_choice' structured output response:", response_dict)
-  return response_dict
+  try:
+    prompt_and_model = prompt | groq_llm_llama3_70b | parser
+    response = prompt_and_model.invoke({"query": query, "name_choices": name_choices_json})
+
+
+    response_dict = { 
+      "name": response.name,
+      "reason": response.reason,
+    }
+    print("'structured_output_for_agent_code_comparator_choice' structured output response:", response_dict)
+    return response_dict
+
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response 'structured_output_for_agent_code_comparator_choice': {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
+  except Exception as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'structured_output_for_agent_code_comparator_choice': {e}")
 
 ### CREATE REQUIREMENTS.TXT
 # structured output class to create requirements.txt
 class CodeRequirements(BaseModel):
-    """Analyze Python script to determine what should be in a corresponding requirements.txt file."""
-    requirements: str = Field(default="", description="The content of the requirements.txt file, with right versions and format of a requirements.txt file content. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
+    """
+      Analyze Python script to determine what should be in a corresponding requirements.txt file.
+      Answers should strictly be as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script. The Python code should be in a single block and fully executable. Replace any markdown delimiters (such as ``` or ```python) with an empty string ('').
+      Example Bad JSON format: {"bad_example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes."}.
+      Example Good JSON format:
+      {'script': 'import requests\n\n...'}
+       OR  
+      {"good_example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."}
+Ensure that the output is a valid JSON object and does not contain any additional text or explanation."
+    """
+    requirements: str = Field(default="", description="The content of the requirements.txt file, with right versions and format of a requirements.txt file content. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those with ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted. Ignore docker, don't put it in the requirement as it is already installed.")
     needed: str = Field(default="", description="Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file.")
 
 
 
 # function for report generation structured output 
 def structured_output_for_create_requirements_for_code(structured_class: CodeRequirements, query: str, prompt_template_part: str) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -289,27 +396,50 @@ def structured_output_for_create_requirements_for_code(structured_class: CodeReq
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
-  response_dict = { 
-    "requirements": response.requirements,
-    "needed": response.needed,
-  }
-  print("'structured_output_for_create_requirements_for_code' structured output response:", response_dict)
-  return response_dict
+  try:
+    prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+    response = prompt_and_model.invoke({"query": query})
+
+
+    response_dict = { 
+      "requirements": response.requirements,
+      "needed": response.needed,
+    }
+    print("'structured_output_for_create_requirements_for_code' structured output response:", response_dict)
+    return response_dict
+
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response 'structured_output_for_create_requirements_for_code': {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
+  except Exception as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'structured_output_for_create_requirements_for_code': {e}")
 
 
 ### ANALYZE CODE EXECUTION STDERR ERRORS
 # structured output class to analyze error after code execution in docker
 class CodeErrorAnalysis(BaseModel):
-    """Analyze Python script, user query, requirements.txt file if any and error message from code execution to come up with new markdown Python script with corresponding requirements.txt only if needed."""
-    requirements: str = Field(default="", description="A markdown requirements.txt content corresponding to new Python script only if needed. Or a correction of the previous requirements.txt if error comes from it.")
-    script: str = Field(default="", description="New Python script that addresses the error in markdown format or the previous script if the error wasn't coming from the code but from the requirements.txt content.")
+    """
+      Analyze Python script, user query, requirements.txt file if any and error message from code execution to come up with new markdown Python script with corresponding requirements.txt only if needed.
+      Answers should strictly be as a valid JSON object. Do NOT include any explanations, markdown, or non-JSON text. The script should be returned as a JSON object with the key 'script', and the value should be a string containing the Python script. The Python code should be in a single block and fully executable. Replace any markdown delimiters (such as ``` or ```python) with an empty string ('').
+      Example Bad JSON format: {"bad_example": "This is a bad example with issues like unescaped quotes in 'keys' and 'values', improper use of ```markdown``` delimiters, and mixed single/double quotes."}.
+      Example Good JSON format:
+      {'script': 'import requests\n\n...'}
+       OR  
+      {"good_example": "This is a good example where quotes are properly escaped, like this: \"escaped quotes\", and no markdown code block delimiters are used."}
+Ensure that the output is a valid JSON object and does not contain any additional text or explanation."
+    """
+    requirements: str = Field(default="", description="A requirements.txt content corresponding to new Python script only if needed. Or a correction of the previous requirements.txt if error comes from it. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those with ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
+    script: str = Field(default="", description="New Python script that addresses the error or the previous script if the error wasn't coming from the code but from the requirements.txt content. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those with ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.")
     needed: str = Field(default="", description="Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file.")
 
 
 # function for report generation structured output 
 def structured_output_for_error_analysis_node(structured_class: CodeErrorAnalysis, query: str, prompt_template_part: str) -> Dict:
+  response = ""
   # Set up a parser + inject instructions into the prompt template.
   parser = PydanticOutputParser(pydantic_object=structured_class)
 
@@ -321,15 +451,28 @@ def structured_output_for_error_analysis_node(structured_class: CodeErrorAnalysi
   print("Prompt before call structured output: ", prompt)
 
   # And a query intended to prompt a language model to populate the data structure. groq_llm_llama3_70b as many code sent so long context
-  prompt_and_model = prompt | groq_llm_llama3_70b | parser
-  response = prompt_and_model.invoke({"query": query})
-  response_dict = { 
-    "requirements": response.requirements,
-    "script": response.script,
-    "needed": response.needed,
-  }
-  print("'structured_output_for_error_analysis_node' structured output response:", response_dict)
-  return response_dict
+  try:
+    prompt_and_model = prompt | groq_llm_mixtral_7b | parser
+    response = prompt_and_model.invoke({"query": query})
+
+    response_dict = { 
+      "requirements": response.requirements,
+      "script": response.script,
+      "needed": response.needed,
+    }
+    print("'structured_output_for_error_analysis_node' structured output response:", response_dict)
+    return response_dict
+
+  # if it is not a valid JSON response we need render the full response and parse it using python splitting techniques
+  except json.JSONDecodeError as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nInvalid JSON response 'structured_output_for_error_analysis_node': {response}. Error: {e}\n\n")
+    raise ValueError(f"Invalid JSON: {e}")
+  except Exception as e:
+    with open("./logs/structured_output_logs.log", "a", encoding="utf-8") as conditional:
+      conditional.write(f"\n\nexcept Exception response: {response}. Error: {e}\n\n")
+    raise ValueError(f"Except Exception raised 'structured_output_for_error_analysis_node': {e}")
+
 
 '''
 if __name__ == "__main__":

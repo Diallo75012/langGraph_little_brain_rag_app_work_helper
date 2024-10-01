@@ -199,7 +199,7 @@ find_documentation_online_agent_prompt = {
     "input_variables": {}
   },
   "human": {
-    "template": "We have to find online how to make a Python script to make a simple API call and get the response in mardown to this: {last_message}. Here is the different APIs urls that we have: {APIs}. Select just the one corresponding accordingly to user intent: {user_initial_query}. And search how to make a Python script to call that URL and return the response using Python in markdown format.", 
+    "template": "We have to find online how to make a Python script to make a simple API call and get the response to this: {last_message}. Here is the different APIs urls that we have: {APIs}. Select just the one corresponding accordingly to user intent: {user_initial_query}. And search how to make a Python script to call that URL and return the response using Python in markdown format.", 
     "input_variables": {"last_message": "", "APIs": "", "user_initial_query": ""}
   },
   "ai": {
@@ -211,11 +211,11 @@ find_documentation_online_agent_prompt = {
 # prompt for documentation_writer that will be using structured output to have a mardown formatted documentation
 documentation_writer_prompt = {
   "system": {
-    "template": "You are an expert in Python code documentation writing and creation. You will analyse information for the required documentation and will understand what user wants. You write instruction like documentation so that LLM agent called will understand and provide the corresponding code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it in markdown format but return the output strictly as a valid JSON object. \n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python code documentation writing and creation. You will analyse information for the required documentation and will understand what user wants. You write instruction like documentation so that LLM agent called will understand and provide the corresponding code. So just ouput the documentation with all steps for Python developer to understand how to write the script. Therefore, DO NOT write the script, just the documentation and guidance in how to do it. \n{format_instructions}\n{query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "I wanted a Python script in markdown to call an API: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Our agent chosen this api to satisfy user request: <API CHOICE>{api_choice}</API CHOICE>; and found some documentation online: <DOCUMENTATION FOUND ONLINE>{documentation_found_online}</DOCUMENTATION FOUND ONLINE>. Can you write in markdown format detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <API LINKS>{apis_links}</API LINKS>.", 
+    "template": "I wanted a Python script to call an API: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Our agent chosen this api to satisfy user request: <API CHOICE>{api_choice}</API CHOICE>; and found some documentation online: <DOCUMENTATION FOUND ONLINE>{documentation_found_online}</DOCUMENTATION FOUND ONLINE>. Can you write detailed documentation in how to write the script that will call the API chosen by user which you can get the reference from: <API LINKS>{apis_links}</API LINKS>.", 
     "input_variables": {"user_initial_query": "", "apis_links": "", "api_choice": "", "documentation_found_online": ""}
   },
   "ai": {
@@ -227,7 +227,7 @@ documentation_writer_prompt = {
 # prompt for parallel llm script creators
 script_creator_prompt = {
   "system": {
-    "template": "You are a Python script expert and analyze user query to craft the best script using Python standard libraries. You script has the right syntaxe, identation,  imports and has no errors. The full code is executable as it is placed all in one block with right synthaxe, indentation and lines. Do NOT split the code with explanation, we only need the code in one executable block. Output strictly as a valid JSON object as follows: {example_json}.\n{format_instructions}\n{query}\n", 
+    "template": "You are a Python script expert and analyze user query to craft the best script using Python standard libraries. You script has the right syntaxe, identation,  imports and has no errors. The full code is executable as it is placed all in one block with right synthaxe, indentation and lines. Do NOT split the code with explanation, we only need the code in one executable block. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
@@ -243,11 +243,11 @@ script_creator_prompt = {
 # prompt for judge agent that will evaluate if documentation written by agent need to be rewritten of if it allow for agents to start writting code script based on that document
 rewrite_or_create_api_code_script_prompt = {
   "system": {
-    "template": "You are an expert in Python code documentation review. You decide if the documentation needs to be rewritten as it contains errors or is not explained properly for an LLM to generate a Python script based on those instructions OR you validate the documentation as it is satisfactory to user needs and LLM agents will be able to comprehend/understand the documentation and easily create code following those instructions. Do not use any markdown code block delimiters (i.e., ``` and ```python) replace those ''. This value MUST be JSON serializable and deserializable, therefore, make sure it is well formatted.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python code documentation review. You decide if the documentation needs to be rewritten as it contains errors or is not explained properly for an LLM to generate a Python script based on those instructions OR you validate the documentation as it is satisfactory to user needs and LLM agents will be able to comprehend/understand the documentation and easily create code following those instructions. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "We need to instruct LLMs to create a Python script to make API calls based on inital request which is: {user_initial_query}. Out of the APIs choices which were those ones: {apis_links}, LLM agents have chosen that one {api_choice}. Based on that our LLM Agent have created some Python document to instruct LLM agents how to create the script. Please see and analyse the following documentation generated then tell if it can be used to instruct LLM agents to make a Python script satisfying inital request using markdown to answer: <INSTRUCTION DOCUEMNTATION>{documentation}</INSTRUCTION DOCUMENTATION>.", 
+    "template": "We need to instruct LLMs to create a Python script to make API calls based on inital request which is: {user_initial_query}. Out of the APIs choices which were those ones: {apis_links}, LLM agents have chosen that one {api_choice}. Based on that our LLM Agent have created some Python document to instruct LLM agents how to create the script. Please see and analyse the following documentation generated then tell if it can be used to instruct LLM agents to make a Python script satisfying inital request: {documentation}.", 
     "input_variables": {"user_inital_query": "", "apis_links": "", "api_choice": "", "documentation": ""}
   },
   "ai": {
@@ -259,11 +259,11 @@ rewrite_or_create_api_code_script_prompt = {
 # prompt for code script evaluation when receiving code from different nodes. We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 code_evaluator_and_final_script_writer_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has th eright imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is. Answer using markdown but return the output strictly as a valid JSON object as follows: {example_json}. No need to use the ```json ``` tag, just make sure it is well formatted and it should be fine.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python script code review. You decide if the code is valid or not by checking if it has the right imports, does the job required, have good indentation and check anything else that is required to check to make sure it is a valid working and executable code as it is. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "We want to know if the script fulfills our initial intent which is: {user_initial_query}. We have chosen one apis to be called from this: {apis_links}, and, have chosen this one: {api_choice}. Please can you tell if the code is executable, have no errors and will be a valid to execute an API call using markdown to answer. Here is the code: <CODE>{code}</CODE>.", 
+    "template": "We want to know if the script fulfills our initial intent which is: {user_initial_query}. We have chosen one apis to be called from this: {apis_links}, and, have chosen this one: {api_choice}. Please can you tell if the code is executable, have no errors and will be a valid to execute an API call using markdown to answer. Here is the code: {code}.", 
     "input_variables": {"user_inital_query": "", "apis_links": "", "api_choice": "", "code": ""}
   },
   "ai": {
@@ -275,11 +275,11 @@ code_evaluator_and_final_script_writer_prompt = {
 # prompt for code comparator that will choose only one script before notifying requirements.txt creator node.  We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 choose_code_to_execute_node_if_many_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review. You will be presented different LLM made Python script named with those LLM names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what the user want to do out of those names: {name_choices}.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python script code review. You will be presented different LLM made Python script named with those LLM names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what the user want to do out of those names: {name_choices}.Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "We want to know which script fulfills the best initial intent which is: {user_initial_query}. Using markdown to answer analyze those codes having their name and corresponding codes:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.", 
+    "template": "We want to know which script fulfills the best initial intent which is: {user_initial_query}. Analyze those codes having their name and corresponding codes and choose one of those code names: {code}.", 
     "input_variables": {"user_inital_query": "", "code": ""}
   },
   "ai": {
@@ -291,11 +291,11 @@ choose_code_to_execute_node_if_many_prompt = {
 # prompt to create requirements.txt file content
 create_requirements_for_code_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review and requirements.txt file. You will be presented different Python script and will decide if it needs a requirements.txt file. If it need one you will provide the content of the corresponding requirements.txt in markdown format.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python script code review and requirements.txt file. You will be presented different Python script and will decide if it needs a requirements.txt file. If it need one you will provide the content of the corresponding requirements.txt. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "Can you please check if that code requires any requirements.txt, if yes, provide the content of that file using markdown:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.", 
+    "template": "Can you please check if that code requires any requirements.txt, if yes, provide only the content of that file:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.", 
     "input_variables": {"code": ""}
   },
   "ai": {
@@ -307,11 +307,11 @@ create_requirements_for_code_prompt = {
 # prompt to analyze code execution stderr
 error_analysis_node_prompt = {
   "system": {
-    "template": "You are an expert in Python script code execution error analysis. You will be presented an error message from Python script execution, with the corresponding script and the requirements.txt file content. You will check if the error come from the script or the requirements or both. Maybe it doesn't need any requirements.txt content as code can be natively executed by python 3.9 slim docker container. If it needs new script or requirements or both, you will provide the content of the corresponding in markdown format.\n{format_instructions}\n{query}\n", 
+    "template": "You are an expert in Python script code execution error analysis. You will be presented an error message from Python script execution, with the corresponding script and the requirements.txt file content. You will check if the error come from the script or the requirements or both. Maybe it doesn't need any requirements.txt content as code can be natively executed by Python 3.9. If it needs new script or requirements or both, you will provide the content of the corresponding only without explanation and well formatted.\nPut answer content between ```markdown ``` tags to ease parsing of response and use only lower cases. here is the schema that you have to follow and make sure it is a proper JSON format: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "Can you please check this error message coming from Python script execution: {error}.\nHere is the code:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.\nAnd here is the requirements.txt file content: <REQUIREMENTS TO ANALYZE>{requirementss}</REQUIREMENTS TO ANALYZE>\n", 
+    "template": "Can you please check this error message coming from Python script execution: {error}.\nHere is the code: {code} .\nAnd here is the requirements.txt file content: {requirements}\n", 
     "input_variables": {"error": "", "code": "", "requirements": ""}
   },
   "ai": {

@@ -54,7 +54,8 @@ from prompts.prompts import (
   script_creator_prompt,
   code_evaluator_and_final_script_writer_prompt,
   choose_code_to_execute_node_if_many_prompt,
-  create_requirements_for_code_prompt
+  create_requirements_for_code_prompt,
+  error_analysis_node_prompt
 )
 from typing import Dict, List, Any, Optional, Union
 # Prompts LAngchain and Custom
@@ -64,7 +65,10 @@ from langchain_core.prompts import PromptTemplate
 Maybe will have to move those functions OR to a file having all node functions OR to the corresponding graph directly
 """
 # utils
-from app_utils import prompt_creation
+from app_utils import (
+  prompt_creation,
+  call_llm
+)
 # Docker execution code
 from docker_agent.execution_of_agent_in_docker_script import run_script_in_docker
 # Tools
@@ -293,10 +297,16 @@ def llama_3_8b_script_creator(state: MessagesState, apis=apis, script_creation_c
   example_json = json.dumps({'script': '<put the Python script here>',})
 
   # creation of the query by injecting variables in  
-  query = prompt_creation(documentation_writer_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=documentation_found_online)
+  query = prompt_creation(script_creator_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=documentation_found_online)
   # get the answer as we want it using structured output and injecting the 'human' prompt in the system one
   try:
-    script_created = structured_output_for_script_creator(script_creation_class, query, example_json, script_creator_prompt["system"]["template"], llm)
+    #script_created = structured_output_for_script_creator(script_creation_class, query, example_json, script_creator_prompt["system"]["template"], llm)
+
+    schema={
+    "script": "The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. use str to answer."
+    }
+    script_created = llm_call(query, script_creator_prompt["system"]["template"], schema, llm)
+
     final_script = script_created["script"]
     return {"messages": [{"role": "ai", "content": json.dumps({"llama_3_8b": final_script})}]}
   except Exception as e:
@@ -313,10 +323,16 @@ def llama_3_70b_script_creator(state: MessagesState, apis=apis, script_creation_
   example_json = json.dumps({'script': '<put the Python script here>',})
 
   # creation of the query by injecting variables in  
-  query = prompt_creation(documentation_writer_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=documentation_found_online)
+  query = prompt_creation(script_creator_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=documentation_found_online)
   # get the answer as we want it using structured output and injecting the 'human' prompt in the system one
   try:
-    script_created = structured_output_for_script_creator(script_creation_class, query, example_json, script_creator_prompt["system"]["template"], llm)
+    #script_created = structured_output_for_script_creator(script_creation_class, query, example_json, script_creator_prompt["system"]["template"], llm)
+    
+    schema={
+    "script": "The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. use str to answer."
+    }
+    script_created = llm_call(query, script_creator_prompt["system"]["template"], schema, llm)
+    
     final_script = script_created["script"]
     return {"messages": [{"role": "ai", "content": json.dumps({"llama_3_70b": final_script})}]}
   except Exception as e:
@@ -333,10 +349,16 @@ def gemma_3_7b_script_creator(state: MessagesState, apis=apis, script_creation_c
   example_json = json.dumps({'script': '<put the Python script here>',})
 
   # creation of the query by injecting variables in  
-  query = prompt_creation(documentation_writer_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=documentation_found_online)
+  query = prompt_creation(script_creator_prompt["human"], user_initial_query=user_initial_query, apis_links=apis, api_choice=api_choice, documentation_found_online=documentation_found_online)
   # get the answer as we want it using structured output and injecting the 'human' prompt in the system one
   try:
-    script_created = structured_output_for_script_creator(script_creation_class, query, example_json, script_creator_prompt["system"]["template"], llm)
+    #script_created = structured_output_for_script_creator(script_creation_class, query, example_json, script_creator_prompt["system"]["template"], llm)
+    
+    schema={
+    "script": "The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. use str to answer."
+    }
+    script_created = llm_call(query, script_creator_prompt["system"]["template"], schema, llm)
+    
     final_script = script_created["script"]
     return {"messages": [{"role": "ai", "content": json.dumps({"gemma_3_7b": final_script})}]}
   except Exception as e:
@@ -454,6 +476,7 @@ def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, ev
       # we need to fill this template to create the query for this code evaluation task
       query = prompt_creation(code_evaluator_and_final_script_writer_prompt["human"], user_initial_query=user_initial_query, api_choice=api_choice, apis_links=apis_links, code=v)
       try:
+        '''
         evaluation = structured_output_for_code_evaluator_and_final_script_writer(evaluator_class, query, example_json, code_evaluator_and_final_script_writer_prompt["system"]["template"])
         print("CODE EVALUATION: ", evaluation)
         """
@@ -462,6 +485,14 @@ def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, ev
           "reason": response.reason,
         }
         """
+        '''
+        schema={
+          "validity": "Say 'yes' if Python script code is evaluated as well written, otherwise 'no'. use str to answer.",
+          "reason": "Tell reason why the code is evaluated as valid or not. use str to answer"
+        }
+        evaluation = llm_call(query, code_evaluator_and_final_script_writer_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+        print("CODE EVALUATION: ", evaluation)
+
         if "yes" in evaluation["validity"].lower():
           print(f"Code evaluated as YES: {k}")
           llm_code_valid_responses_list_dict.append({k: v})
@@ -507,8 +538,15 @@ def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_
   name_choices_json = json.dumps(name_choices)
   query = prompt_creation(choose_code_to_execute_node_if_many_prompt["human"], user_initial_query=user_initial_query, code=FORMATTED_CODES)
   try:
-    choice = structured_output_for_agent_code_comparator_choice(comparator_choice_class, query, name_choices_json, choose_code_to_execute_node_if_many_prompt["system"]["template"])
-    llm_name = choice["llm_name"]
+    #choice = structured_output_for_agent_code_comparator_choice(comparator_choice_class, query, name_choices_json, choose_code_to_execute_node_if_many_prompt["system"]["template"])
+
+    schema={
+      "name": "Codes are labelled with names. Answer the name of the code that you have selected as being the best out the choices. If all codes are the same, just choose one of the available name as value. use str to answer.",
+      "reason": "Tell reason why you chose that llm code among the different code snippets analyzed. use str to answer"
+    }
+    choice = llm_call(query, error_analysis_node_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+
+    llm_name = choice["name"]
     reason = chocie["reason"]
     print("LLM SCRIPT CHOICE AND REASON: ", llm_name, reason)
     return {"messages": [{"role": "ai", "content": json.dumps({"success": {"llm_name": llm_name, "reason": reason}})}]}
@@ -519,7 +557,10 @@ def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_
 def create_requirements_for_code(state: MessagesState, requirements_creation_class = CodeRequirements):
   # get the valided code
   messages = state["messages"]
-  llm_name = json.loads(messages[-1])["llm_name"]
+  #llm_name = json.loads(messages[-1])["llm_name"]
+  llm_name = "gemma_3_7b"
+  
+  #user_initial_query = os.getenv("USER_INITIAL_QUERY")
 
   # use llm_name to get the corresponding script
   scripts_folder = os.getenv("AGENTS_SCRIPTS_FOLDER")
@@ -527,27 +568,39 @@ def create_requirements_for_code(state: MessagesState, requirements_creation_cla
   for script in scripts_list_in_folder:
     if script.startswith(f"agent_code_execute_in_docker_{llm_name}"):
       # we get the script code that will be injected in the human prompt
-      script_to_create_requirement_for = script
+      with open(f"{scripts_folder}/{script}", "r", encoding="utf-8") as s:
+        script_to_create_requirement_for = s.read()
 
   # use structured output to get the requirements.txt
-  query = prompt_creation(create_requirements_for_code_prompt["human"], user_initial_query=user_initial_query, code=script_to_create_requirement_for)
+  query = prompt_creation(create_requirements_for_code_prompt["human"], code=script_to_create_requirement_for)
   try:
-    requirements_response = structured_output_for_create_requirements_for_code(requirements_creation_class, query, create_requirements_for_code_prompt["system"]["template"])
-    
+    #requirements_response = structured_output_for_create_requirements_for_code(requirements_creation_class, query, create_requirements_for_code_prompt["system"]["template"])
+    schema={
+      "requirements" : "The content of the requirements.txt file, with right versions and format of a requirements.txt file content. Ignore docker, don\'t put it in the requirement as it is already installed. answer just a str as it should be on the requirements.txt file, if there is more than one line make sure to format the str with \\n to return at the next line for next required package to install. ",
+      "needed": "Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file."
+    }
+    requirements_response = llm_call(query, create_requirements_for_code_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+    print("Requirement needed or not response: ", requirements_response)
     # responses parsing
     requirements_txt_content = requirements_response["requirements"]
     requirements_needed_or_not = requirements_response["needed"]
-    print("REQUIREMENTS AND IF NEEDED OR NOT: ", requirements_txt_content, requirements_needed_or_not)
-    
+    print("REQUIREMENTS AND IF NEEDED OR NOT: ", requirements_txt_content, requirements_needed_or_not.lower())
+    print(f"scripts_folder path: '{scripts_folder}'")
+    print(f"Does the folder exist? {os.path.exists(scripts_folder)}")
     # check if llm believed that code needs a requirements.txt file or not
-    if "yes" in requirements_needed_or_not.lower().strip():
+    if requirements_needed_or_not.lower() == "yes":
       # create the requirements.txt file
-      sandbox_requirement_file = f"{script_folder}/{llm_name}_requirements.txt"
+      sandbox_requirement_file = f"{scripts_folder}/{llm_name}_requirements.txt"
+      print("sandbox_requirement_file path: ", sandbox_requirement_file)
       with open(sandbox_requirement_file, "w", encoding="utf-8") as req:
          req.write(f"# This requirements for the code generated by {llm_name}\n")
          req.write(requirements_txt_content.strip())
+    else:
+      print("PROBLEM: ", requirements_needed_or_not.lower())
     # return with name of the requirement file in the states
-    return {"messages": [{"role": "ai", "content": json.dumps({"success": {"requirements": sandbox_requirement_file, "llm_name": llm_name}})}]}
+    requirements = sandbox_requirement_file if sandbox_requirement_file else ""     
+    return {"messages": [{"role": "ai", "content": json.dumps({"success": {"requirements": requirements, "llm_name": llm_name}})}]}
+
   except Exception as e:
     return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to check if code needs requirements.txt file created or not:{e}"})}]}
 
@@ -559,27 +612,32 @@ def code_execution_node(state: MessagesState):
   
   messages = state["messages"]
   last_message = json.loads(messages[-1].content)
+  print("last message: ", last_message)
   
   # get requirements file name and llm name
-  requirements_file_name = last_messages["requirements"]
-  llm_name = last_messages["llm_name"]
+  if last_message["success"]["requirements"]:
+    requirements_file_name = last_message["success"]["requirements"]
+  llm_name = last_message["success"]["llm_name"]
   
   # track reties
   retry_code_execution = int(os.getenv("RETRY_CODE_EXECUTION"))
   print("RETRY CODE EXECUTION: ", retry_code_execution)
-  if retry_doc_execution == 0:
+  if retry_code_execution == 0:
     state["messages"].append({"role": "system", "content": "All retries have been consummed, failed to execute code or stopped at code execution"})
     return "error_handler"
 
   if retry_code_execution > 0:
     # returns a tupel Tuple[stdout, stderr] , scripts present at: ./docker_agent/agents_scripts/{script_path}
     agents_scripts_dir = os.getenv("AGENTS_SCRIPTS_FOLDER")
-    for agent_script_file_name in os.lisdir(agents_scripts_dir):
+    for agent_script_file_name in os.listdir(agents_scripts_dir):
       if agent_script_file_name.startwith(f"agent_code_execute_in_docker_{llm_name}"):
         print("Script file name: ", agent_script_file_name)
         try:
           # returns a Tuple[stdout, stderr]
-          stdout, stderr = run_script_in_docker(f"{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}", f"{agents_scripts_dir}/{requirements_file_name}")
+          if requirements_file_name:
+            stdout, stderr = run_script_in_docker(f"{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}", f"{agents_scripts_dir}/{requirements_file_name}")
+          else:
+            stdout, stderr = run_script_in_docker(f"{llm_name}_dockerfile", f"{agents_scripts_dir}/{agent_script_file_name}")
           if stdout:
             stdout_list.append({
               "script_file_path": f"{agents_scripts_dir}/{agent_script_file_name}",
@@ -627,20 +685,31 @@ def error_analysis_node(state: MessagesState, code_error_analysis_class = CodeEr
   stderr = json.loads(messages[-1].content)["stderr"]
   # get the different values
   error_message = stderr["output"]
-  code = stderr["script_file_path"]
+  code_file = stderr["script_file_path"]
   llm_name = stderr["llm_script_origin"]
-  for script in os.listdir(os.getenv("AGENTS_SCRIPT_FOLDER")):
-    if script.endswith(".txt") and script.startswith("llm_name"):
-      requirements_file = script
+  scripts_folder = os.getenv("AGENTS_SCRIPT_FOLDER")
+  sandbox_requirement_file = f"{scripts_folder}/{llm_name}_requirements.txt"
+  # get files content
+  with open(code_file, "r", encoding="utf-8") as f:
+    code = f.read()
+  with open(sandbox_requirement_file, "r", encoding="utf-8") as f:
+    requirements_file_content = f.read()
    
   # ask llm to check the error compared to the user initial query, the api chosen, the code and the requirements.txt and use structured output to provide new code, new requirements.txt and return to execute code with those new file, therefore need to create an explicative name for those new files and save those names to state to keep track
   # see if we add the dockerfile of not dockerfile=f"{llm_name}_dockerfile"
-  query = prompt_creation(error_analysis_node_prompt["human"], error=error_message, code=code, requirements=requirements_file)
+  query = prompt_creation(error_analysis_node_prompt["human"], error=error_message, code=code, requirements=requirements_file_content)
   '''
    don't forget that you also need to provide the dockerfile and use the same file names in formatting when rewriting those files so that the execution code node will just run the same file names but which have been overwritten
   '''
   try:
-    code_analysis_response = structured_output_for_error_analysis_node(code_error_analysis_class, query, error_analysis_node_prompt["system"]["template"])
+    #code_analysis_response = structured_output_for_error_analysis_node(code_error_analysis_class, query, error_analysis_node_prompt["system"]["template"])
+
+    schema={
+      "requirements": "A requirements.txt content corresponding to new Python script only if needed. Or a correction of the previous requirements.txt if error comes from it. answer just a str as it should be on the requirements.txt file, if there is more than one line make sure to format the str with \\n to return at the next line for next required package to install.",
+      "script": "New Python script that addresses the error or the previous script if the error wasn't coming from the code but from the requirements.txt content. Make sure it is well formatted, with good indentation and line returns. use str to answer.",
+      "needed": "Answer 'YES' or 'NO' depending on if the code requires a requirements.txt file."
+    }
+    code_analysis_response = llm_call(query, error_analysis_node_prompt["system"]["template"], schema, groq_llm_llama3_70b)
 
     # responses parsing
     code_requirements = code_analysis_response["requirements"]
@@ -651,13 +720,12 @@ def error_analysis_node(state: MessagesState, code_error_analysis_class = CodeEr
     # check if llm believed that code needs a requirements.txt file or not
     if "yes" in requirements_needed.lower().strip():
       # create the requirements.txt file
-      sandbox_requirement_file = f"{script_folder}/{llm_name}.txt"
       with open(sandbox_requirement_file, "w", encoding="utf-8") as req:
          req.write(f"# Initial requirements code generated by {llm_name} initially but got execution error: {stderr}. Therefore, created this new one through error analysis.\n")
          req.write(requirements_txt_content.strip())
     elif code_script:
       # update script file with new code using same file
-      agent_script = f"./docker_agent/agents_scripts/agent_code_execute_in_docker_{llm_name}.py"
+      agent_script = f"{scripts_folder}/agent_code_execute_in_docker_{llm_name}.py"
       with open(agent_script, "w", encoding="utf-8") as agts:
          agts.write("#!/usr/bin/env python3")
          agts.write(f"'''This requirements for the code generated by {llm_name} after execution error: {stderr}\n")
@@ -859,10 +927,13 @@ def create_requirements_or_error(state: MessagesState):
 
 # execute code or return error conditional edge
 def execute_code_or_error(state: MessagesState):
-  messages = ["messages"]
+  messages = state["messages"]
   last_message = json.loads(messages[-1].content)
   
   if "success" in last_message:
+    return "code_execution_node"
+  
+  elif "disagree" in last_message:
     return "code_execution_node"
   
   elif "error" in last_message:
@@ -885,6 +956,7 @@ workflow = StateGraph(MessagesState)
 
 # nodes
 workflow.add_node("error_handler", error_handler) # here we need to manage error handler to not just stop the app but loop bas to some nodes with the reasons and check retry
+'''
 workflow.add_node("get_user_input", get_user_input)
 workflow.add_node("tool_api_choose_agent", tool_api_choose_agent)
 workflow.add_node("tool_agent_decide_which_api_node", tool_agent_decide_which_api_node)
@@ -897,6 +969,7 @@ workflow.add_node("llama_3_70b_script_creator", llama_3_70b_script_creator)
 workflow.add_node("gemma_3_7b_script_creator", gemma_3_7b_script_creator)
 workflow.add_node("code_evaluator_and_final_script_writer", code_evaluator_and_final_script_writer)
 workflow.add_node("choose_code_to_execute_node_if_many", choose_code_to_execute_node_if_many)
+'''
 workflow.add_node("create_requirements_for_code", create_requirements_for_code)
 workflow.add_node("code_execution_node", code_execution_node)
 workflow.add_node("successful_code_execution_management", successful_code_execution_management)
@@ -904,6 +977,7 @@ workflow.add_node("error_analysis_node", error_analysis_node)
 workflow.add_node("inter_graph_node", inter_graph_node)
 
 # edges
+'''
 workflow.set_entry_point("get_user_input")
 workflow.add_conditional_edges(
   "get_user_input",
@@ -937,6 +1011,8 @@ workflow.add_conditional_edges(
   "choose_code_to_execute_node_if_many",
   create_requirements_or_error
 )
+'''
+workflow.set_entry_point("create_requirements_for_code")
 workflow.add_conditional_edges(
   "create_requirements_for_code",
   execute_code_or_error

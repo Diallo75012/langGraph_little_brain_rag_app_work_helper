@@ -30,7 +30,11 @@ from prompts.prompts import (
   answer_user_with_report_from_retrieved_data_prompt,
   structured_outpout_report_prompt,
   script_creator_prompt,
-  documentation_writer_prompt
+  documentation_writer_prompt,
+  create_requirements_for_code_prompt,
+  error_analysis_node_prompt,
+  choose_code_to_execute_node_if_many_prompt,
+  code_evaluator_and_final_script_writer_prompt
 )
 from lib_helpers.chunking_module import create_chunks_from_db_data
 from lib_helpers.query_analyzer_module import detect_content_type
@@ -71,7 +75,8 @@ from app_utils import (
   # graph conditional adge helper function
   decide_next_step,
   # delete parquet file after db storage
-  delete_parquet_file
+  delete_parquet_file,
+  llm_call
 )
 
 import subprocess
@@ -890,14 +895,27 @@ doc = json.loads(os.getenv("DOCUMENTATION_FOUND_ONLINE"))["messages"][0]
 #last_message = input("Enter your query: ")
 #print("last_message: ", last_message)
 
+'''
 # use structured output to decide if we need to generate documentation and code
 query = prompt_creation(script_creator_prompt["human"], user_initial_query=os.getenv("USER_INITIAL_QUERY"), apis_links=apis_links, api_choice=api_choice, documentation_found_online=doc)
+
 print("Query created: ", query)
 
 response = structured_output_for_script_creator(script_creation_class, query, json.dumps(example_json), script_creator_prompt["system"]["template"], groq_llm_mixtral_7b)
 print("Response: ", response)
-
-
+'''
+documentation_found_online = json.loads(os.getenv("DOCUMENTATION_FOUND_ONLINE"))["messages"][0]
+user_initial_query = os.getenv("USER_INITIAL_QUERY")
+requirements_file_content = "requests\nflask\nnumpy\n"
+error_message = "final age need be returned like: '{age} is too old now!'. and the requirements.txt have packages that are not needed. please correct all those errors."
+with open("./docker_agent/agents_scripts/agent_code_execute_in_docker_gemma_3_7b.py", "r", encoding="utf-8") as s:
+  code = s.read()
+query = prompt_creation(script_creator_prompt["human"], user_initial_query=user_initial_query, apis_links=apis_links, api_choice=api_choice, documentation_found_online=documentation_found_online)
+schema={
+    "script": "The content of the Python script file with right synthaxe, indentation and logic. It should be executable as it is. use str to answer."
+}
+response = llm_call(query, script_creator_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+print("Response: ", response)
 
 
 

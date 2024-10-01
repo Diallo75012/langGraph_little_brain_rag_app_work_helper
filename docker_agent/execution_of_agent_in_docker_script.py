@@ -4,7 +4,7 @@ it is Python language only for the moment.
 and code will be executed in Docker for safety reasons
 """
 import os
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 import subprocess
@@ -31,7 +31,7 @@ def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_fil
     with open(name_of_dockerfile_to_run_script, "w", encoding="utf-8") as docker_file:
         docker_file.write("# Docker fly created on the fly to execute code in docker by agents.\n")
         docker_file.write("FROM python:3.9-slim\n")
-        if requirements_script_file_path:
+        if requirements_script_file_path != "":
           docker_file.write(f"COPY {requirements_script_file_path} .\n")
           docker_file.write(f"RUN pip install --no-cache-dir -r {requirements_script_file_path}\n")
         docker_file.write(f"COPY {agent_script_file_path} /app/{agent_script_file_path}\n")
