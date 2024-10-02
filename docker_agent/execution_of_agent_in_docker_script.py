@@ -9,6 +9,20 @@ from typing import Tuple, Optional
 
 import subprocess
 
+# function to check if image exist for clean up
+def check_if_image_exists(image_name: str) -> bool:
+    """Check if a Docker image exists."""
+    try:
+        # Run the 'docker images' command to list all images
+        result = subprocess.run(['docker', 'images', '-q', image_name], capture_output=True, text=True, check=False)
+        
+        # If there's output, the image exists
+        return bool(result.stdout.strip())
+    
+    except Exception as e:
+        print(f"An error occurred while checking for the Docker image: {e}")
+        return False
+
 def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_file_path: str, requirements_script_file_path: str = "") -> Tuple[str, str]:
     """
       Will copy agent created Python script to build the Dockerfile with it to execute the script in a docker sandbox for secure code execution.
@@ -63,10 +77,6 @@ def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_fil
           """)
           script_execution_result.write(f"\n\nstdout: {stdout}\nstderr: {stderr}")
         
-        # Remove the Docker image
-        cleanup_command = ['docker', 'rmi', '-f', 'sandbox-python']
-        subprocess.run(cleanup_command, check=False)
-        
         # Return the captured output
         return stdout, stderr
 
@@ -76,8 +86,16 @@ def run_script_in_docker(name_of_dockerfile_to_run_script: str, agent_script_fil
     finally:
         # Safely attempt to remove the Docker image only if it exists
         try:
-            cleanup_command = ['docker', 'rmi', '-f', 'sandbox-python']
-            subprocess.run(cleanup_command, check=False)
+            if check_if_image_exists("sandbox-python"):
+                try:
+                    cleanup_command = ['docker', 'rmi', '-f', "sandbox-python"]
+                    subprocess.run(cleanup_command, check=False)
+                    print("Image sandbox-python removed successfully.")
+                except Exception as e:
+                    print(f"An error occurred while trying to remove the image: {e}")
+            else:
+                print(f"Image sandbox-python does not exist, skipping cleanup.")
+
         except subprocess.CalledProcessError as e:
             print(f"Image is not there so all good! We tried to cleanup if any image .. Error during Docker cleanup: {e}")
 

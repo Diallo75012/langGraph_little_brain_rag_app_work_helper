@@ -719,8 +719,11 @@ def llm_call(query: str, prompt_template_part: str, schema: str, llm: ChatGroq) 
     print("RESPONSE: ", response.content)
     # parse content from dict
     if "```" in response.content:
-      response_parsed = response.content.split("```")[1].strip("markdown").strip()
+      print(" '```' in response")
+      # parse response and clean it to limit errors of not valid json error when transforming to dictionary
+      response_parsed = response.content.split("```")[1].strip("markdown").strip().replace("`", "").replace("\n\n", "\n")
     else:
+      print(" '```' in not response")
       response_parsed = response.content
     # transform to dict
     response_content_to_dict = string_to_dict(response_parsed)
@@ -737,7 +740,7 @@ def llm_call(query: str, prompt_template_part: str, schema: str, llm: ChatGroq) 
     '''
     
   except Exception as e:
-    raise Exception(f"An error occured while calling llm: {e}")
+    raise Exception(f"An error occured while calling llm: {str(e)}")
 
 
 

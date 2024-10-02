@@ -167,7 +167,7 @@ get_user_input_prompt = {
     "input_variables": {}
   },
   "human": {
-    "template": "User query is: <INITIAL USER QUERY>{user_initial_query}</INITIAL USER QUERY>. Analyze the query to see if we need to generate Python script code for it or not.  Or if we need ONLY documentation created or not. Or if we don't need any code nor documentation as it is just a general question not needing any code generation or code documentation.", 
+    "template": "User query is: {user_initial_query}. Analyze the query to see if we need to generate Python script code for it or not.  Or if we need ONLY documentation created or not. Or if we don't need any code nor documentation as it is just a general question not needing any code generation or code documentation.", 
     "input_variables": {"user_initial_query": ""}
   },
   "ai": {
@@ -231,7 +231,7 @@ script_creator_prompt = {
     "input_variables": {}
   },
   "human": {
-    "template": "I need a Python script for an API call following this request: {user_initial_query}. The chosen API for the script is: {api_choice}. And the link to that API can be found here: {apis_links}. Use the documentation the following documentation to make the Python script: <DOCUMENTATION>{documentation_found_online}</DOCUMENTATION>", 
+    "template": "I need a Python script for an API call following this request: {user_initial_query}. The chosen API for the script is: {api_choice}. And the link to that API can be found here: {apis_links}. Use the documentation the following documentation to make the Python script: {documentation_found_online}.", 
     "input_variables": {"user_initial_query": "", "apis_links": "", "api_choice": "", "documentation_found_online": ""}
   },
   "ai": {
@@ -275,12 +275,12 @@ code_evaluator_and_final_script_writer_prompt = {
 # prompt for code comparator that will choose only one script before notifying requirements.txt creator node.  We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 choose_code_to_execute_node_if_many_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review. You will be presented different LLM made Python script named with those LLM names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what the user want to do out of those names: {name_choices}.Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
+    "template": "You are an expert in Python script code review. You will be presented different LLM made Python script named with those LLM names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what it is wanted to be done. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {
-    "template": "We want to know which script fulfills the best initial intent which is: {user_initial_query}. Analyze those codes having their name and corresponding codes and choose one of those code names: {code}.", 
-    "input_variables": {"user_inital_query": "", "code": ""}
+    "template": "We want to know which script fulfills the best initial intent which is: {user_initial_query}. Analyze those codes having their name and corresponding codes and choose one of those code names: {code}. The choices of names: {name_choices}", 
+    "input_variables": {"user_inital_query": "", "code": "", "name_choices": ""}
   },
   "ai": {
     "template": "", 
@@ -295,7 +295,7 @@ create_requirements_for_code_prompt = {
     "input_variables": {}
   },
   "human": {
-    "template": "Can you please check if that code requires any requirements.txt, if yes, provide only the content of that file:<CODES TO ANALYZE>{code}</CODES TO ANALYZE>.", 
+    "template": "Can you please check if that code requires any requirements.txt, if yes, provide only the content of that file: {code}.", 
     "input_variables": {"code": ""}
   },
   "ai": {

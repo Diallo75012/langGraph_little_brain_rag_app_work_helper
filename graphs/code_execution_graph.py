@@ -413,12 +413,16 @@ def documentation_steps_evaluator_and_doc_judge(state: MessagesState, apis = api
     decision = llm_call(query, rewrite_or_create_api_code_script_prompt["system"]["template"], schema, groq_llm_llama3_70b)
 
     if decision["decision"] == "rewrite":
+      print("DECISION: rewrite")
       return {"messages": [{"role": "ai", "content": json.dumps({"disagree":decision})}]} # use spliting technique to get what is wanted 
     elif decision["decision"] == "generate":
+      print("DECISION: generate")
       return {"messages": [{"role": "ai", "content": json.dumps({"success":"generate"})}]}
     else:
+      print("DECISION: error")
       return {"messages": [{"role": "ai", "content": json.dumps({"error":decision})}]}
   except Exception as e:
+    print("Exception Triggered")
     return {"messages": [{"role": "ai", "content": json.dumps({"error":e})}]} 
 
 def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, evaluator_class = CodeScriptEvaluation):
@@ -519,7 +523,7 @@ def code_evaluator_and_final_script_writer(state: MessagesState, apis = apis, ev
           print(f"Code evaluated as NO: {k}")
           llm_code_invalid_responses_list_dict.append({k: v, "reason": evaluation["reason"]})
       except Exception as e:
-        return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to evaluate if LLM codes are valid:{e}"})}]}
+        return {"messages": [{"role": "ai", "content": json.dumps({"error": f"An error occured while trying to evaluate if LLM codes are valid:{e}"})}]}
     
     return {"messages": [{"role": "ai", "content": json.dumps({"valid": llm_code_valid_responses_list_dict, "invalid": llm_code_invalid_responses_list_dict})}]}
 
@@ -555,7 +559,7 @@ def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_
 
   # use structured output to decide on the name of the file that will be chosen for code execution. returns Dict[name, reason]
   name_choices_json = json.dumps(name_choices)
-  query = prompt_creation(choose_code_to_execute_node_if_many_prompt["human"], user_initial_query=user_initial_query, code=FORMATTED_CODES)
+  query = prompt_creation(choose_code_to_execute_node_if_many_prompt["human"], user_initial_query=user_initial_query, code=FORMATTED_CODES, name_choices=name_choices)
   try:
     #choice = structured_output_for_agent_code_comparator_choice(comparator_choice_class, query, name_choices_json, choose_code_to_execute_node_if_many_prompt["system"]["template"])
 
@@ -563,26 +567,29 @@ def choose_code_to_execute_node_if_many(state: MessagesState, comparator_choice_
       "name": "Codes are labelled with names. Answer the name of the code that you have selected as being the best out the choices. If all codes are the same, just choose one of the available name as value. use str to answer.",
       "reason": "Tell reason why you chose that llm code among the different code snippets analyzed. use str to answer"
     }
-    choice = llm_call(query, error_analysis_node_prompt["system"]["template"], schema, groq_llm_llama3_70b)
+    choice = llm_call(query, choose_code_to_execute_node_if_many_prompt["system"]["template"], schema, groq_llm_llama3_70b)
 
     llm_name = choice["name"]
-    reason = chocie["reason"]
+    reason = choice["reason"]
     print("LLM SCRIPT CHOICE AND REASON: ", llm_name, reason)
     return {"messages": [{"role": "ai", "content": json.dumps({"success": {"llm_name": llm_name, "reason": reason}})}]}
   except Exception as e:
-    return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to compare LLM codes aand choose one:{e}"})}]}
+    return {"messages": [{"role": "ai", "content": json.dumps({"error": f"An error occured while trying to compare LLM codes aand choose one:{e}"})}]}
 
 # will create requirments.txt
 def create_requirements_for_code(state: MessagesState, requirements_creation_class = CodeRequirements):
   # get the valided code
   messages = state["messages"]
-  llm_name = json.loads(messages[-1])["llm_name"]
+  print("LAST MESSAGE CONTENT IN 'CREATE_REQRUIREMENTS_FOR_CODE': ", json.loads(messages[-1].content))
+  llm_name = json.loads(messages[-1].content)["success"]["llm_name"].replace("\\", "")
+  print("LLM_NAME IN CREATE_REQUIREMENTS_FOR_CODE: ", llm_name)
   # just for testing this node to the end
   #llm_name = "gemma_3_7b"
   
   #user_initial_query = os.getenv("USER_INITIAL_QUERY")
 
   # use llm_name to get the corresponding script
+  script_to_create_requirement_for = ""
   scripts_folder = os.getenv("AGENTS_SCRIPTS_FOLDER")
   scripts_list_in_folder = os.listdir(scripts_folder)
   for script in scripts_list_in_folder:
@@ -622,7 +629,7 @@ def create_requirements_for_code(state: MessagesState, requirements_creation_cla
     return {"messages": [{"role": "ai", "content": json.dumps({"success": {"requirements": requirements, "llm_name": llm_name}})}]}
 
   except Exception as e:
-    return {"messages": [{"role": "ai", "content": json.dumps({"error": "An error occured while trying to check if code needs requirements.txt file created or not:{e}"})}]}
+    return {"messages": [{"role": "ai", "content": json.dumps({"error": f"An error occured while trying to check if code needs requirements.txt file created or not:{e}"})}]}
 
 # will execute code in docker sandbox
 def code_execution_node(state: MessagesState):
@@ -880,7 +887,8 @@ def rewrite_or_create_requirements_decision(state: MessagesState):
       for llm, script in elem.items():
         with open(f"./docker_agent/agents_scripts/agent_code_execute_in_docker_{llm}.py", "w", encoding="utf-8") as llm_script:
           llm_script.write("#!/usr/bin/env python3")
-          llm_script.write(f"# code from: {llm} LLM Agent\n# User initial request: {os.getenv('USER_INITIAL_REQUEST')}\n'''This code have been generated by an LLM Agent'''\n\n")
+          llm_name = llm.split("_")[0]
+          llm_script.write(f"# code from: {llm_name} LLM Agent\n# User initial request: {os.getenv('USER_INITIAL_REQUEST')}\n'''This code have been generated by an LLM Agent'''\n\n")
           llm_script.write(script)
      
     print("All Python script files are ready to be executed!")
@@ -922,13 +930,21 @@ def success_execution_or_retry_or_return_error(state: MessagesState):
 def create_requirements_or_error(state: MessagesState):
   messages = state["messages"]
   outcome = json.loads(messages[-1].content)
+  print("\n\n\nOUTCOME: ", outcome, "\n\n\n")
+  llm_name_list_to_pick_from = ["gemma_3_7b", "llama_3_8b", "llama_3_70b"]
+  llm_agent = ""
   
   ## CREATE REQUIREMENTS FOR THE BEST SCRIPT SELECTED
   if "success" in outcome: # Dict[Dict[name, reason]]
     # update state with the name of the llm only that will be passed to next node so it can find that file code and execute it in docker
-    llm_name = outcome["success"]["llm_name"]
+    # example of what we get and why we parse it here: `gemma\\_3\\_7b`
+    llm_name = outcome["success"]["llm_name"].split("_")[0].strip("\\")
     print("LLM CHOSEN TO BE EXECUTED IN DOCKER: ", llm_name)
-    state["messages"].append({"role": "system", "content": json.dumps({"llm_name": llm_name})})
+    for name in llm_name_list_to_pick_from:
+      if llm_name in name:
+        # update state with that llm_name
+        print("LLM Name: ", name)
+        state["messages"].append({"role": "system", "content": json.dumps({"llm_name": name})})
     # go to code execution node
     return "create_requirements_for_code"
   
@@ -936,7 +952,11 @@ def create_requirements_or_error(state: MessagesState):
   elif "one_script_only" in outcome: # Dict[name, script]
     # # update state with the name of the llm only that will be passed to next node so it can find that file code and execute it in docker
     llm_name = outcome["one_script_only"]
-    state["messages"].append({"role": "system", "content": json.dumps({"llm_name": llm_name})})
+    for name in llm_name_list_to_pick_from:
+      if llm_name in name:
+        # update state with that llm_name
+        print("LLM Name: ", name)        
+        state["messages"].append({"role": "system", "content": json.dumps({"llm_name": name})})
     # go to code execution node
     return "create_requirements_for_code"
   

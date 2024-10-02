@@ -82,6 +82,9 @@ if __name__ == "__main__":
   if os.getenv("DOCUMENTATION_AND_CODE_GENERATION_ONLY") == "true" and code_execution_flow == "done":
     # see here if we print all the env vars having where the files can be found
     print("Code execution done in safe docker sandbox environment, documentation have been created.")
+    '''
+      Here use read the files that needs to be rendered like the documentation and the script and the execution result to make a report.
+    '''
     sys.exit()
 
   ###################################### PDF or URL RAG DOCUMENT ANALYSIS AND REPORT CREATION #########################################
