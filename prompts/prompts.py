@@ -275,7 +275,7 @@ code_evaluator_and_final_script_writer_prompt = {
 # prompt for code comparator that will choose only one script before notifying requirements.txt creator node.  We are injecting the human side of the prompt by formating a query that is injected tot he system prompt
 choose_code_to_execute_node_if_many_prompt = {
   "system": {
-    "template": "You are an expert in Python script code review. You will be presented different LLM made Python script named with those LLM names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what it is wanted to be done. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
+    "template": "You are an expert in Python script code review. You will be presented different LLM made Python script named with those LLM names and their corresponding codes. You will analyze those thouroughly and decide which ONE, and ONLY ONE, is the best for what it is wanted to be done. You must choose one name out of those choices provided. DO not valid code that have missing syntax, parenthesis, commas or string literal not closed properly or bad indentation. Strictly answer following the given schema.\nhere is the schema that you have to follow and make sure it is a proper JSON format and put it between ```markdown ``` tags to ease parsing of response and use only lower cases: {response_schema}\nHere is user query: {query}\n", 
     "input_variables": {}
   },
   "human": {

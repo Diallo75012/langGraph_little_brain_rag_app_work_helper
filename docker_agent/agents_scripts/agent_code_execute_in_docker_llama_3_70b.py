@@ -4,13 +4,14 @@
 
 import requests
 
-url = 'https://api.agify.io/?name=Junko'
 
-response = requests.get(url)
-
-if response.status_code == 200:
+def get_joke():
+    response = requests.get("https://official-joke-api.appspot.com/random_joke")
     data = response.json()
-    age = data['age']
-    print(f'The age of your friend Junko is: {age}')
-else:
-    print('An error occurred while making the API call')
+    setup = data['setup']
+    punchline = data['punchline']
+    return f"Setup: {setup}\n\nPunchline: {punchline}"
+
+
+if __name__ == "__main__":
+    print(get_joke())
