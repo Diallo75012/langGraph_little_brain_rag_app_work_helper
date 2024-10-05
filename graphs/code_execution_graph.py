@@ -1184,10 +1184,12 @@ def code_execution_graph(user_query):
   with open("code_execution_subgraph.png", "wb") as f:
     f.write(graph_image)
   '''
+  '''
   # subgraph drawing
   graph_image = code_execution_graph.get_graph().draw_png()
   with open("code_execution_subgraph.png", "wb") as f:
     f.write(graph_image)
+  '''
   
   # this is set from the first node and conditional edge of the graph so that the 'Dusiness Logic' side of the app knows how to manage graph flows
   if "true" in os.getenv("REPORT_NEEDED"):

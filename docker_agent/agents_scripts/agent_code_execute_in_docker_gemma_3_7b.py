@@ -4,14 +4,18 @@
 
 import requests
 
+def get_dog_image():
+    # Make a GET request to the dog images API
+    response = requests.get("https://dog.ceo/api/breeds/image/random")
 
-def get_joke():
-    response = requests.get("https://official-joke-api.appspot.com/random_joke")
-    data = response.json()
-    setup = data['setup']
-    punchline = data['punchline']
-    return f"Setup: {setup}\n\nPunchline: {punchline}"
+    # Check if the request was successful
+    if response.status_code == 200:
+        # Convert the response to JSON format
+        data = response.json()
 
+        # Return the image URL
+        return data["message"]
 
 if __name__ == "__main__":
-    print(get_joke())
+    # Print a random dog image
+    print(get_dog_image())

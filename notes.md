@@ -3174,6 +3174,7 @@ Untagged: sandbox-python:latest
 
 
 
+I am looking at pictures of random dog breeds. I want to create a script using Python that calls an API and get an returned dog image. Make sure that the script is well written without any errors, missing parenthesis, comma, string literal not well closes, and use only python standard librairies
 
 
 
